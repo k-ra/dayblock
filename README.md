@@ -19,6 +19,8 @@ Fun stickers, more journaling features, weekly summaries, flexible weekly and mo
 
 ## Try it locally
 
+[Open Dayblock](https://k-ra.github.io/dayblock/) in your browser, or run it locally:
+
 There is no build step and no package installation.
 
 ```bash
