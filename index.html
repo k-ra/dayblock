@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dayblock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header class="toolbar">
+  <div class="group">
+    <button id="prev" title="previous spread (←)">‹</button>
+    <button id="today">today</button>
+    <button id="next" title="next spread (→)">›</button>
+    <span id="range" class="range"></span>
+  </div>
+
+  <div class="group">
+    <label>show
+      <select id="view">
+        <option value="all">all hours</option>
+        <option value="work">work hours</option>
+        <option value="off">off hours</option>
+      </select>
+    </label>
+    <label class="hours">work
+      <select id="ws"></select>
+      <span class="dash">–</span>
+      <select id="we"></select>
+    </label>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="group">
+    <span class="hint">/ to type a block or todo</span>
+    <button id="addSticky">+ sticky note</button>
+  </div>
+</header>
+
+<main class="scene" id="scene">
+  <div class="book" id="book">
+    <section class="page" data-side="left"></section>
+    <section class="page" data-side="right"></section>
+  </div>
+  <div class="stationery" id="stationery"></div>
+</main>
+
+<div class="popover" id="popover"></div>
+
+<script src="./app.js"></script>
+</body>
+</html>
