@@ -2,7 +2,16 @@
 
 A quiet, local-first planner for stationery lovers. I'm mainly making Dayblock for myself: timeblocking and quick notes without carrying a physical planner. You can separate work hours from after-work hours, plan across two facing days, and keep everything on your own device.
 
-Fun stickers, more journaling features, weekly summaries, flexible weekly and monthly views, Google Calendar integration, and usability polishes incoming.
+Open a book from the bookshelf: the daily planner, ideas notebook, or reading log.
+The planner has day, week, and month views sharing the same dated entries.
+
+Each reading entry opens a two-page journal. Book details stay synced with the
+index. Like a book with the heart, and optionally mark Recommend? and Reread?
+yes or no (tap the selected answer again to clear it). The left page holds first
+impressions, summary, and takeaways; the right holds final thoughts and unstructured
+notes that expand for long writing. Existing index notes appear in that notes area.
+Entries save automatically in this browser. On phones, pages stack vertically;
+wide weekly and monthly paper scrolls horizontally inside the book.
 
 ## What it does
 

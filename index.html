@@ -12,6 +12,7 @@
 <body>
 
 <header class="toolbar">
+  <button id="backShelf">‹ bookshelf</button>
   <div class="group">
     <button id="prev" title="previous spread (←)">‹</button>
     <button id="today">today</button>
@@ -42,8 +43,13 @@
   </div>
 </header>
 
+<section id="shelf" class="shelf" aria-label="Bookshelf"></section>
 <main class="scene" id="scene">
-  <div class="book" id="book">
+  <nav class="book-tabs" aria-label="Planner view">
+    <button data-mode="day">day</button><button data-mode="week">week</button><button data-mode="month">month</button>
+  </nav>
+  <p class="mobile-sheet-hint" id="mobileSheetHint" hidden>Swipe across the paper to see the rest →</p>
+  <div class="book" id="book" tabindex="0" aria-label="Open notebook">
     <section class="page" data-side="left"></section>
     <section class="page" data-side="right"></section>
   </div>

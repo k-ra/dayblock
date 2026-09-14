@@ -41,6 +41,10 @@ const weekOf = key => {                       // Monday … Sunday around a day
   return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
 };
 const shortDate = k => { const d = fromKey(k); return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`; };
+const weekStart = k => addDays(k, -((fromKey(k).getDay() + 6) % 7));
+const monthStart = k => k.slice(0, 7) + '-01';
+const isWeek = () => state.settings.mode === 'week';
+const isMonth = () => state.settings.mode === 'month';
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -92,6 +96,13 @@ function dayData(k) {
 }
 
 let state = load();
+if (!['day', 'week', 'month'].includes(state.settings.mode)) state.settings.mode = 'day';
+state.months ||= {};
+state.trackers ||= { ideas: [], reading: [] };
+let activeBook = 'shelf';
+let trackerKind = 'ideas';
+let showArchived = false;
+let journalId = null;
 let cursor = todayKey();          // left page of the current spread
 let lastToday = todayKey();
 const fresh = new Set();          // ids of just-drawn blocks; they vanish if left untitled
@@ -124,7 +135,7 @@ function layout() {
 
   const visible = parts.filter(p => p[0] === 'seg').reduce((s, p) => s + p[2] - p[1], 0);
   const gaps = parts.filter(p => p[0] === 'gap').length;
-  const pph = clamp((GRID_H - gaps * GAP_H) / visible, 36, 96);  // px per hour
+  const pph = clamp(((isWeek() ? 320 : GRID_H) - gaps * GAP_H) / visible, isWeek() ? 16 : 36, 96);
 
   let y = 0;
   const items = parts.map(([type, from, to]) => {
@@ -287,6 +298,10 @@ const viewSel = $('#view'), wsSel = $('#ws'), weSel = $('#we');
 
 function renderToolbar() {
   const s = state.settings;
+  document.querySelectorAll('[data-mode]').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.mode === s.mode));
+  });
+  viewSel.closest('.group').hidden = isMonth();
   viewSel.value = s.view;
   wsSel.innerHTML = ''; weSel.innerHTML = '';
   for (let h = DAY_START; h < DAY_END; h++) wsSel.append(el('option', { value: h }, fmtHour(h)));
@@ -294,11 +309,28 @@ function renderToolbar() {
   wsSel.value = s.workStart; weSel.value = s.workEnd;
   $('.hours').style.opacity = s.view === 'all' ? .5 : 1;
 
-  const a = fromKey(cursor), b = fromKey(addDays(cursor, 1));
+  const start = isMonth() ? monthStart(cursor) : isWeek() ? weekStart(cursor) : cursor;
+  const a = fromKey(start), b = fromKey(addDays(start, isWeek() ? 6 : 1));
   const mo = d => MONTHS[d.getMonth()].slice(0, 3);
   $('#range').textContent = a.getMonth() === b.getMonth()
     ? `${mo(a)} ${a.getDate()} – ${b.getDate()}, ${b.getFullYear()}`
     : `${mo(a)} ${a.getDate()} – ${mo(b)} ${b.getDate()}, ${b.getFullYear()}`;
+  if (isMonth()) $('#range').textContent = `${MONTHS[a.getMonth()]} ${a.getFullYear()}`;
+}
+
+function setMode(mode, key = cursor) {
+  activeBook = 'planner';
+  cursor = key;
+  state.settings.mode = mode;
+  save(); render();
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+function navigate(direction) {
+  if (isMonth()) {
+    const d = fromKey(cursor);
+    cursor = keyOf(new Date(d.getFullYear(), d.getMonth() + direction, 1));
+  } else cursor = addDays(cursor, direction * (isWeek() ? 7 : 2));
+  render();
 }
 
 viewSel.onchange = () => { state.settings.view = viewSel.value; save(); render(); };
@@ -314,8 +346,8 @@ weSel.onchange = () => {
   if (s.workStart >= s.workEnd) s.workStart = s.workEnd - 1;
   save(); render();
 };
-$('#prev').onclick = () => { cursor = addDays(cursor, -2); render(); };
-$('#next').onclick = () => { cursor = addDays(cursor, 2); render(); };
+$('#prev').onclick = () => navigate(-1);
+$('#next').onclick = () => navigate(1);
 $('#today').onclick = () => { cursor = todayKey(); render(); };
 $('#addSticky').onclick = () => {
   const n = state.desk.items.filter(i => i.type === 'sticky').length;
@@ -330,6 +362,7 @@ $('#addSticky').onclick = () => {
 };
 document.addEventListener('keydown', e => {
   if (e.target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if (activeBook !== 'planner') return;
   if (e.key === 'ArrowLeft') $('#prev').click();
   if (e.key === 'ArrowRight') $('#next').click();
   if (e.key === '/') {
@@ -439,6 +472,16 @@ function renderTimeline(container, key) {
   grid.append(blocksLayer);
   renderNow(grid, key, L);
   grid.addEventListener('pointerdown', e => onGridPointerDown(e, key));
+  // Native touch scrolling owns swipes; a completed tap still edits or creates.
+  grid.addEventListener('click', e => {
+    if (e.pointerType !== 'touch') return;
+    if (e.target.closest('.gap')) { state.settings.view = 'all'; save(); render(); return; }
+    const block = e.target.closest('.block');
+    if (block) { focusEditable($('.block-title', block)); return; }
+    if (e.target.closest('.hour-label')) return;
+    const start = clamp(snap(yToTime(e.clientY - grid.getBoundingClientRect().top, L)), DAY_START, DAY_END - SNAP);
+    addBlock(key, start, Math.min(start + .5, DAY_END));
+  });
   container.append(grid);
 }
 
@@ -462,6 +505,7 @@ function tick() {
 setInterval(tick, 30 * 1000);
 
 function onGridPointerDown(e, key) {
+  if (e.pointerType === 'touch') return;
   if (e.button !== 0) return;
   const grid = e.currentTarget;
   const d = dayData(key);
@@ -608,8 +652,8 @@ function renderQuickAdd(container, key) {
 function renderTodos(container, key) {
   const d = dayData(key);
   const ul = el('ul', { class: 'todos' });
-  const focusTodo = id => {
-    const t = $(`.page[data-key="${key}"] .todo[data-id="${id}"] .todo-text`);
+  const focusTodo = (id, atEnd) => {
+    const t = $(`[data-key="${key}"] .todo[data-id="${id}"] .todo-text`);
     t && focusEditable(t);
   };
   d.todos.forEach((t, i) => {
@@ -739,6 +783,7 @@ function defaultPos(type) {
 // Any desk object: drag to move, click to do its own thing.
 function makeDraggable(node, it, onClick) {
   node.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') return;
     if (e.button !== 0) return;
     if (e.target.closest('button, [contenteditable]:focus')) return;
     e.preventDefault();
@@ -823,13 +868,271 @@ function renderCard(it, base) {
   stationery.append(node);
 }
 
+/* ---------- wider paper views, using the same dated records ---------- */
+function dayHeading(key) {
+  const date = fromKey(key);
+  const button = el('button', { class: `date-heading${key === todayKey() ? ' today' : ''}`, title: 'Open day', 'aria-label': `Open ${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}` },
+    el('span', {}, DOW[date.getDay()]), el('strong', {}, String(date.getDate())));
+  button.onclick = () => setMode('day', key);
+  return button;
+}
+
+function renderWeek() {
+  const start = weekStart(cursor);
+  const sheet = el('section', { class: 'wide-sheet week-sheet', 'aria-label': 'Weekly planner' });
+  sheet.append(el('header', { class: 'sheet-heading' },
+    el('h1', {}, 'This week'), el('span', {}, 'a little space for every day')));
+  const columns = el('div', { class: 'week-columns' });
+  for (let i = 0; i < 7; i++) {
+    const key = addDays(start, i), d = dayData(key);
+    const column = el('section', { class: 'week-day', 'data-key': key });
+    const title = el('div', { class: 'week-title', 'data-placeholder': 'a focus for today', 'aria-label': 'Day title' }, d.title);
+    bindEditable(title, v => { d.title = v; save(); });
+    column.append(el('header', { class: 'week-day-head' }, dayHeading(key), title));
+    const timeline = el('div', { class: 'timeline' });
+    renderTimeline(timeline, key);
+    const todos = el('section', { class: 'week-todos' }, el('h3', {}, 'to do'));
+    renderTodos(todos, key);
+    const notes = el('section', { class: 'notes week-notes' }, el('h3', {}, 'notes'));
+    renderTextField(notes, 'notes-text', d.notes, v => { d.notes = v; save(); }, 'notes');
+    column.append(timeline, todos, notes);
+    columns.append(column);
+  }
+  sheet.append(columns);
+  book.append(sheet);
+}
+
+function renderMonth() {
+  const first = monthStart(cursor), date = fromKey(first);
+  const count = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const offset = (date.getDay() + 6) % 7;
+  const weeks = Math.ceil((offset + count) / 7);
+  const start = weekStart(first);
+  const sheet = el('section', { class: 'wide-sheet month-sheet', 'aria-label': 'Monthly planner' });
+  sheet.append(el('header', { class: 'sheet-heading' },
+    el('h1', {}, MONTHS[date.getMonth()]), el('span', {}, String(date.getFullYear()))));
+  const body = el('div', { class: 'month-body' });
+  const calendar = el('div', { class: 'month-calendar', style: `--weeks:${weeks}` });
+  for (let i = 0; i < 7; i++) calendar.append(el('div', { class: `month-weekday${i > 4 ? ' weekend' : ''}` }, DOW[(i + 1) % 7]));
+  for (let i = 0; i < weeks * 7; i++) {
+    const key = addDays(start, i), d = dayData(key);
+    const cell = el('section', { class: `month-cell${key.slice(0, 7) !== first.slice(0, 7) ? ' outside' : ''}${i % 7 > 4 ? ' weekend' : ''}`, 'data-key': key });
+    cell.append(dayHeading(key));
+    const entries = el('div', { class: 'month-entries' });
+    if (d.title) entries.append(el('div', { class: 'month-focus' }, d.title));
+    for (const b of [...d.blocks].sort((a, b) => a.start - b.start)) {
+      const entry = el('button', { class: `month-block hl-${b.color}`, title: `${fmtRange(b.start, b.end)} · ${b.title}` },
+        el('span', {}, fmtHour(b.start)), b.title || 'untitled');
+      entry.onclick = () => setMode('day', key);
+      entries.append(entry);
+    }
+    for (const t of d.todos) {
+      const todo = el('button', { class: `month-todo hl-${t.color}${t.done ? ' done' : ''}`, 'aria-pressed': String(t.done), title: 'Toggle completed' }, `${t.done ? '☑' : '□'} ${t.text || '…'}`);
+      todo.onclick = () => { t.done = !t.done; save(); render(); };
+      entries.append(todo);
+    }
+    if (d.notes) {
+      const note = el('button', { class: 'month-day-note', title: 'Open day notes' }, d.notes);
+      note.onclick = () => setMode('day', key);
+      entries.append(note);
+    }
+    cell.append(entries);
+    calendar.append(cell);
+  }
+  const monthKey = first.slice(0, 7);
+  const month = state.months[monthKey] ||= { notes: '' };
+  const notes = el('aside', { class: 'month-notes notes' }, el('h3', {}, 'month notes'));
+  const text = el('div', { class: 'notes-text', 'data-placeholder': 'room for the bigger picture', 'aria-label': 'Month notes' }, month.notes);
+  bindEditable(text, v => { month.notes = v; save(); }, { multiline: true });
+  notes.append(text);
+  body.append(calendar, notes);
+  sheet.append(body);
+  book.append(sheet);
+}
+
+/* ---------- the stack and its tracking notebooks ---------- */
+function openBook(kind) {
+  journalId = null;
+  activeBook = kind === 'planner' ? 'planner' : 'tracker';
+  if (activeBook === 'tracker') trackerKind = kind;
+  showArchived = false;
+  render();
+  window.scrollTo(0, 0);
+}
+$('#backShelf').onclick = () => { activeBook = 'shelf'; render(); window.scrollTo(0, 0); };
+
+function renderShelf() {
+  const shelf = $('#shelf');
+  shelf.innerHTML = '';
+  shelf.append(el('header', { class: 'shelf-heading' }, el('span', { class: 'shelf-eyebrow' }, 'SPREAD / YOUR BOOKS'),
+    el('h1', {}, 'A place to keep things.'), el('p', {}, 'The days, the ideas, the books you carry with you.')));
+  const stack = el('div', { class: 'book-stack' });
+  const ideas = state.trackers.ideas.filter(x => !x.archived).length;
+  const read = state.trackers.reading.filter(x => !x.archived && x.status === 'finished').length;
+  const volumes = [
+    ['planner', '01', 'The daily planner', 'day · week · month', 'make a little room'],
+    ['ideas', '02', 'An idea notebook', `${ideas} ${ideas === 1 ? 'idea' : 'ideas'} tucked away`, 'collect · consider · make'],
+    ['reading', '03', 'A reading life', `${read} ${read === 1 ? 'book' : 'books'} read`, 'a record of other worlds'],
+  ];
+  for (const [kind, number, title, detail, subtitle] of volumes) {
+    const volume = el('button', { class: `stack-volume volume-${kind}`, 'aria-label': `Open ${title}` },
+      el('span', { class: 'volume-number' }, number),
+      el('span', { class: 'volume-label' }, el('strong', {}, title), el('small', {}, subtitle)),
+      el('span', { class: 'volume-detail' }, detail), el('span', { class: 'volume-open', 'aria-hidden': 'true' }, '↗'));
+    volume.onclick = () => openBook(kind);
+    stack.append(volume);
+  }
+  shelf.append(stack, el('p', { class: 'shelf-footnote' }, 'Choose a spine. Open a book. Stay awhile.'));
+}
+
+function renderTracker() {
+  const reading = trackerKind === 'reading';
+  const rows = state.trackers[trackerKind];
+  const statuses = reading ? ['want to read', 'reading', 'finished', 'set aside'] : ['captured', 'exploring', 'making', 'done'];
+  const sheet = el('section', { class: `wide-sheet tracker-sheet ${reading ? 'reading-sheet' : 'ideas-sheet'}`, 'aria-label': reading ? 'Reading tracker' : 'Ideas tracker' });
+  const tabs = el('nav', { class: 'tracker-tabs', 'aria-label': 'Tracker section' });
+  for (const [kind, label] of [['ideas', 'ideas'], ['reading', 'reading']]) {
+    const button = el('button', { 'aria-pressed': String(trackerKind === kind) }, label);
+    button.onclick = () => { trackerKind = kind; showArchived = false; render(); };
+    tabs.append(button);
+  }
+  const visible = rows.filter(x => !!x.archived === showArchived);
+  const completed = rows.filter(x => !x.archived && x.status === (reading ? 'finished' : 'done')).length;
+  sheet.append(tabs, el('header', { class: 'sheet-heading' },
+    el('div', {}, el('div', { class: 'shelf-eyebrow' }, 'THE TRACKER'), el('h1', {}, reading ? 'A reading life' : 'An idea notebook')),
+    el('span', {}, `${completed} ${reading ? 'read' : 'made'} / ${rows.filter(x => !x.archived).length} collected`)));
+  const controls = el('div', { class: 'tracker-controls' });
+  const add = el('button', { class: 'tracker-add' }, reading ? '+ a book' : '+ an idea');
+  add.onclick = () => {
+    const item = { id: uid(), title: '', detail: '', notes: '', status: statuses[0], date: reading ? '' : todayKey() };
+    rows.push(item); showArchived = false; save(); render();
+    $(`[data-entry="${item.id}"] .entry-title`).focus();
+  };
+  const archive = el('button', { class: 'archive-toggle', 'aria-pressed': String(showArchived) }, showArchived ? '← current entries' : 'archived');
+  archive.onclick = () => { showArchived = !showArchived; render(); };
+  controls.append(add, archive);
+  sheet.append(controls);
+  const ledger = el('div', { class: 'tracker-ledger' });
+  ledger.append(el('div', { class: 'ledger-head' }, el('span', {}, reading ? 'book / author' : 'idea / thread'),
+    el('span', {}, 'where it is'), el('span', {}, reading ? 'finished on' : 'captured on'), el('span', {}, reading ? 'thoughts & passages' : 'notes & next steps'), el('span')));
+  if (!visible.length) ledger.append(el('div', { class: 'tracker-empty' },
+    el('span', {}, showArchived ? 'Nothing archived.' : reading ? 'What are you reading?' : 'What’s on your mind?'),
+    el('p', {}, showArchived ? 'Your current entries are still in the notebook.' : reading ? 'Keep the books you want to read, and the ones that stayed with you.' : 'A sentence is enough to begin. You can come back to it.')));
+  for (const item of visible) {
+    const row = el('article', { class: 'ledger-row', 'data-entry': item.id });
+    const field = (key, placeholder, className) => {
+      const node = el('div', { class: className, 'data-placeholder': placeholder, role: 'textbox', 'aria-label': placeholder }, item[key] || '');
+      bindEditable(node, v => { item[key] = v; save(); }, { multiline: key === 'notes' });
+      return node;
+    };
+    const status = el('select', { 'aria-label': 'Status', class: 'entry-status' });
+    for (const s of statuses) status.append(el('option', { value: s }, s));
+    status.value = item.status;
+    status.onchange = () => {
+      item.status = status.value;
+      if (reading && item.status === 'finished' && !item.date) item.date = todayKey();
+      save(); render();
+    };
+    const date = el('input', { type: 'date', value: item.date, 'aria-label': reading ? 'Finished on' : 'Captured on', class: 'entry-date' });
+    date.onchange = () => { item.date = date.value; save(); };
+    const archiveEntry = el('button', { class: 'archive-entry', title: showArchived ? 'Restore entry' : 'Archive entry', 'aria-label': showArchived ? 'Restore entry' : 'Archive entry' }, showArchived ? '↶' : '↗');
+    archiveEntry.onclick = () => { item.archived = !item.archived; save(); render(); };
+    const identity = el('div', { class: 'entry-identity' }, field('title', reading ? 'Book title' : 'Idea', 'entry-title'), field('detail', reading ? 'Author' : 'Theme or project', 'entry-detail'));
+    if (reading) {
+      const open = el('button', { class: 'open-journal' }, `${item.liked ? '♥ · ' : ''}open journal →`);
+      open.onclick = () => { journalId = item.id; render(); window.scrollTo(0, 0); };
+      identity.append(open);
+    }
+    row.append(identity,
+      status, date, field('notes', reading ? 'What stayed with you…' : 'Where could this go…', 'entry-notes'), archiveEntry);
+    ledger.append(row);
+  }
+  sheet.append(ledger);
+  book.append(sheet);
+}
+
+function renderJournal() {
+  const item = state.trackers.reading.find(x => x.id === journalId);
+  if (!item) { journalId = null; renderTracker(); return; }
+  const navigation = el('nav', { class: 'journal-nav', 'aria-label': 'Book journal navigation' });
+  const back = el('button', {}, '← reading index');
+  back.onclick = () => { journalId = null; render(); };
+  navigation.append(back);
+  const siblings = state.trackers.reading.filter(x => !!x.archived === !!item.archived);
+  const index = siblings.indexOf(item);
+  for (const [step, label] of [[-1, '‹ previous'], [1, 'next ›']]) {
+    const button = el('button', { disabled: siblings[index + step] ? null : '' }, label);
+    button.onclick = () => { journalId = siblings[index + step].id; render(); window.scrollTo(0, 0); };
+    navigation.append(button);
+  }
+  const field = (key, label, className = '') => {
+    const node = el('div', { class: `journal-writing ${className}`, role: 'textbox', 'aria-label': label, 'aria-multiline': 'true', 'data-placeholder': label }, item[key] || '');
+    bindEditable(node, v => { item[key] = v; save(); }, { multiline: true });
+    return node;
+  };
+  const section = (key, label, className = '') => el('section', { class: `journal-section ${className}` }, el('h3', {}, label), field(key, label));
+  const left = el('section', { class: 'page journal-left', 'data-side': 'left' });
+  const right = el('section', { class: 'page journal-right', 'data-side': 'right' });
+  const details = el('header', { class: 'journal-details' });
+  const like = el('button', { class: 'journal-like', 'aria-label': 'Like this book', 'aria-pressed': String(!!item.liked) }, item.liked ? '♥' : '♡');
+  like.onclick = () => { item.liked = !item.liked; save(); render(); };
+  details.append(el('div', { class: 'journal-title-row' }, field('title', 'Book title', 'journal-title'), like), field('detail', 'Author', 'journal-author'));
+  const meta = el('div', { class: 'journal-meta' });
+  const status = el('select', { 'aria-label': 'Reading status' });
+  for (const s of ['want to read', 'reading', 'finished', 'set aside']) status.append(el('option', { value: s }, s));
+  status.value = item.status;
+  status.onchange = () => { item.status = status.value; if (item.status === 'finished' && !item.date) item.date = todayKey(); save(); render(); };
+  meta.append(status);
+  for (const [key, label] of [['started', 'started'], ['date', 'finished']]) {
+    const input = el('input', { type: 'date', value: item[key] || '', 'aria-label': `${label} on` });
+    input.onchange = () => { item[key] = input.value; save(); };
+    meta.append(el('label', {}, label, input));
+  }
+  const verdicts = el('div', { class: 'journal-verdicts' });
+  for (const [key, label] of [['recommend', 'Recommend?'], ['reread', 'Reread?']]) {
+    const group = el('div', { role: 'group', 'aria-label': label }, el('span', {}, label));
+    for (const [value, text] of [[true, 'yes'], [false, 'no']]) {
+      const button = el('button', { 'aria-pressed': String(item[key] === value) }, text);
+      button.onclick = () => { item[key] = item[key] === value ? null : value; save(); render(); };
+      group.append(button);
+    }
+    verdicts.append(group);
+  }
+  details.append(meta, verdicts);
+  left.append(details, section('firstImpressions', 'first impressions', 'first-impressions'), section('summary', 'summary'), section('takeaways', 'takeaways'));
+  right.append(section('finalThoughts', 'final thoughts', 'final-thoughts'), section('notes', 'notes', 'long-notes'));
+  book.className = 'book journal-book';
+  book.append(navigation, left, right);
+}
+
 /* ---------- render all ---------- */
 function render() {
   closePopover();
+  const shelfOpen = activeBook === 'shelf', plannerOpen = activeBook === 'planner';
+  $('#shelf').hidden = !shelfOpen;
+  scene.hidden = shelfOpen;
+  $('.toolbar').hidden = shelfOpen;
+  $('.book-tabs').hidden = !plannerOpen;
+  $('#mobileSheetHint').hidden = !plannerOpen || (!isWeek() && !isMonth());
+  document.querySelectorAll('.toolbar > .group, .toolbar > .spacer').forEach(n => n.hidden = !plannerOpen);
+  if (shelfOpen) { renderShelf(); return; }
   renderToolbar();
-  renderPage($('.page[data-side="left"]'), cursor);
-  renderPage($('.page[data-side="right"]'), addDays(cursor, 1));
-  renderDesk();
+  if (!plannerOpen) viewSel.closest('.group').hidden = true;
+  book.innerHTML = '';
+  book.className = `book ${plannerOpen ? state.settings.mode : 'tracker'}-book`;
+  if (!plannerOpen && journalId) renderJournal();
+  else if (!plannerOpen) renderTracker();
+  else if (isWeek()) renderWeek();
+  else if (isMonth()) renderMonth();
+  else {
+    const left = el('section', { class: 'page', 'data-side': 'left' });
+    const right = el('section', { class: 'page', 'data-side': 'right' });
+    book.append(left, right);
+    renderPage(left, cursor);
+    renderPage(right, addDays(cursor, 1));
+  }
+  stationery.hidden = !plannerOpen;
+  if (plannerOpen) renderDesk();
 }
 
 carryOver();
