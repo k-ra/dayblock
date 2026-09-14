@@ -96,8 +96,11 @@ function dayData(k) {
 
 let state = load();
 if (!['day', 'week', 'month'].includes(state.settings.mode)) state.settings.mode = 'day';
-if (!['page', 'spread'].includes(state.settings.paper)) state.settings.paper = 'page';
-state.settings.margin ??= false;
+// Separate device preferences so desktop opens as a spread without narrowing phones.
+const paperPreferences = state.settings.paperPreferences ||= {};
+if (!['page', 'spread'].includes(paperPreferences.desktop)) paperPreferences.desktop = 'spread';
+if (!['page', 'spread'].includes(paperPreferences.phone)) paperPreferences.phone = 'page';
+paperPreferences.margin ??= true;
 state.months ||= {};
 state.trackers ||= { ideas: [], reading: [] };
 let activeBook = 'shelf';
@@ -105,8 +108,9 @@ let trackerKind = 'ideas';
 let showArchived = false;
 let journalId = null;
 const phone = matchMedia('(max-width: 700px)');
-const singlePage = () => state.settings.paper === 'page';
-const marginVisible = () => !phone.matches && state.settings.margin;
+const paperMode = () => paperPreferences[phone.matches ? 'phone' : 'desktop'];
+const singlePage = () => paperMode() === 'page';
+const marginVisible = () => !phone.matches && paperPreferences.margin;
 let paperPart = 0;
 phone.addEventListener('change', () => render());
 let resizeTimer;
@@ -315,7 +319,7 @@ const viewSel = $('#view'), wsSel = $('#ws'), weSel = $('#we');
 
 function renderToolbar() {
   const s = state.settings;
-  document.querySelectorAll('.paper-controls [data-paper]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.paper === s.paper)));
+  document.querySelectorAll('.paper-controls [data-paper]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.paper === paperMode())));
   $('#toggleMargin').hidden = phone.matches;
   $('#toggleMargin').setAttribute('aria-pressed', String(marginVisible()));
   $('#addSticky').hidden = phone.matches;
@@ -341,9 +345,10 @@ function renderToolbar() {
 }
 
 document.querySelectorAll('.paper-controls [data-paper]').forEach(b => b.onclick = () => {
-  state.settings.paper = b.dataset.paper; paperPart = 0; save(); render();
+  paperPreferences[phone.matches ? 'phone' : 'desktop'] = b.dataset.paper;
+  paperPart = 0; save(); render();
 });
-$('#toggleMargin').onclick = () => { state.settings.margin = !state.settings.margin; save(); render(); };
+$('#toggleMargin').onclick = () => { paperPreferences.margin = !paperPreferences.margin; save(); render(); };
 
 function setMode(mode, key = cursor) {
   paperPart = 0;
@@ -378,7 +383,7 @@ $('#prev').onclick = () => navigate(-1);
 $('#next').onclick = () => navigate(1);
 $('#today').onclick = () => { cursor = todayKey(); render(); };
 $('#addSticky').onclick = () => {
-  state.settings.margin = true;
+  paperPreferences.margin = true;
   const n = state.desk.items.filter(i => i.type === 'sticky').length;
   const p = defaultPos('sticky');
   state.desk.items.push({
@@ -394,10 +399,6 @@ document.addEventListener('keydown', e => {
   if (activeBook !== 'planner') return;
   if (e.key === 'ArrowLeft') $('#prev').click();
   if (e.key === 'ArrowRight') $('#next').click();
-  if (e.key === '/') {
-    e.preventDefault();
-    ($(`.page[data-key="${todayKey()}"] .quick`) || $('.page .quick'))?.focus();
-  }
 });
 
 /* ---------- a page (one day) ---------- */
@@ -421,7 +422,6 @@ function renderPage(pageEl, key) {
 
   const timeline = el('div', { class: 'timeline' });
   renderTimeline(timeline, key);
-  renderQuickAdd(timeline, key);
 
   const side = el('div', { class: 'side' });
   const todo = el('div', { class: 'todo-section' }, el('h3', {}, el('span', {}, 'todo')));
@@ -656,68 +656,6 @@ function openBlockEditor(key, block) {
     }
   }, { once: true });
   dialog.append(form); document.body.append(dialog); dialog.showModal(); title.focus();
-}
-
-/* ---------- keyboard first: "lunch 12-1" → block, "call mum" → todo ---------- */
-const TIME = String.raw`(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?`;
-const RANGE_RE = new RegExp(String.raw`(?:^|\s)(?:@|at\s+)?${TIME}\s*(?:-|–|—|to)\s*${TIME}(?=\s|$)`, 'i');
-const SINGLE_RE = new RegExp(String.raw`(?:^|\s)(@|at\s+)?${TIME}(?=\s|$)`, 'i');
-
-function resolveTime(h, m, ap, after) {
-  h = Number(h); m = Number(m || 0);
-  if (h > 24 || m > 59) return null;
-  if (ap) {
-    ap = ap[0].toLowerCase();
-    if (ap === 'p' && h < 12) h += 12;
-    if (ap === 'a' && h === 12) h = 24;
-  } else if (h >= 1 && h <= 7) h += 12;              // 1 … 7 on an 8 am → midnight day is afternoon
-  let t = h + m / 60;
-  if (after != null && t <= after) {                  // "11-1", "10pm-12": the end is later
-    if (t + 12 > after && t + 12 <= DAY_END) t += 12;
-    else if (h === 12) t = 24;
-  }
-  return t;
-}
-function parseQuick(text) {
-  let m = text.match(RANGE_RE);
-  if (m) {
-    const start = resolveTime(m[1], m[2], m[3]);
-    const end = start == null ? null : resolveTime(m[4], m[5], m[6], start);
-    if (start != null && end != null && end > start) return { start, end, title: strip(text, m) };
-  }
-  m = text.match(SINGLE_RE);
-  if (m) {
-    const explicit = m[1] || m[3] || m[4];                 // "at 3", "3:30", "3pm"
-    const last = text.trim().endsWith(m[0].trim());        // or the time is the last word
-    if (explicit || last) {
-      const start = resolveTime(m[2], m[3], m[4]);
-      if (start != null) return { start, end: Math.min(start + 1, DAY_END), title: strip(text, m) };
-    }
-  }
-  return null;
-}
-const strip = (text, m) => text.replace(m[0], ' ').replace(/\s+/g, ' ').replace(/^[\s,@-]+|[\s,@-]+$/g, '')
-  .replace(/\s+at$/i, '').trim();
-
-function renderQuickAdd(container, key) {
-  const input = el('input', { class: 'quick', placeholder: 'lunch 12–1  ·  or just a todo', spellcheck: 'false' });
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { input.value = ''; input.blur(); return; }
-    if (e.key !== 'Enter') return;
-    const text = input.value.trim();
-    if (!text) return;
-    const p = parseQuick(text);
-    if (p) {
-      const start = clamp(snap(p.start), DAY_START, DAY_END - SNAP);
-      const end = clamp(snap(p.end), start + SNAP, DAY_END);
-      addBlock(key, start, end, p.title);
-    } else {
-      dayData(key).todos.push({ id: uid(), text, done: false, color: 'none' });
-      save(); render();
-    }
-    if (p && p.title) $(`.page[data-key="${key}"] .quick`)?.focus();
-  });
-  container.append(input);
 }
 
 /* ---------- todos ---------- */
@@ -1198,7 +1136,7 @@ function render() {
   $('.book-tabs').hidden = !plannerOpen;
   $('#mobileSheetHint').hidden = true;
   document.body.dataset.surface = shelfOpen ? 'shelf' : plannerOpen ? 'planner' : 'tracker';
-  document.body.dataset.paper = state.settings.paper;
+  document.body.dataset.paper = paperMode();
   document.body.classList.toggle('margin-open', !shelfOpen && marginVisible());
   $('.book-navigation').classList.toggle('tracker-navigation', !plannerOpen);
   document.querySelectorAll('.toolbar > .group, .toolbar > .spacer').forEach(n => n.hidden = !plannerOpen);

@@ -155,13 +155,6 @@ select:hover { border-color: var(--ink-3); }
   content: ''; position: absolute; left: -1px; top: -4px;
   width: 7px; height: 7px; border-radius: 50%; background: #e0716f;
 }
-.quick {
-  display: block; width: 100%; margin-top: 10px;
-  padding: 6px 2px; border: 0; border-bottom: 1px solid var(--line);
-  font: 12px var(--font); color: var(--ink); background: none; outline: none;
-}
-.quick::placeholder { color: var(--ink-3); font-family: var(--mono); font-size: 11px; }
-.quick:focus { border-color: var(--ink-3); }
 
 .block {
   position: absolute;
@@ -646,10 +639,9 @@ body[data-surface="tracker"] #toggleTools { display: none; }
 /* Page/spread is independent of the calendar period. */
 body { --paper-width: 1180px; --rail-width: clamp(100px, 20vw, 232px); }
 body[data-paper="page"] { --paper-width: 680px; }
-/* Keep desktop paper proportionate to its height, not the monitor's width. */
+/* A little unruled paper below the month grid, without another writing section. */
 @media (min-width: 701px) {
-  body { --paper-width: clamp(760px, calc(150dvh - 180px), 1000px); }
-  body[data-paper="page"] { --paper-width: clamp(440px, calc(85dvh - 102px), 580px); }
+  .month-sheet { padding-bottom: 40px; }
 }
 .book-navigation { display: flex; align-items: center; justify-content: space-between; width: min(var(--paper-width), 100%); margin: 0 auto; gap: 6px; min-height: 32px; }
 .book-navigation .book-tabs { margin: 0; padding-left: 0; }

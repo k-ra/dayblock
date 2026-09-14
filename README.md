@@ -10,8 +10,10 @@ index. Like a book with the heart, and optionally mark Recommend? and Reread?
 yes or no (tap the selected answer again to clear it). The left page holds first
 impressions, summary, and takeaways; the right holds final thoughts and unstructured
 notes that expand for long writing. Existing index notes appear in that notes area.
-Entries save automatically in this browser. The remembered page/spread control
-is independent of day, week, and month. The complete seven-day week fits one
+Entries save automatically in this browser. Desktop starts with a spread and
+stationery margin; phones start with a single page and no margin. Page/spread
+choices are remembered separately for desktop and phone, independently of day,
+week, and month. The complete seven-day week fits one
 page, including on phones: hour rows resize to the available height, with a
 shared time gutter and notes for every day. Tap a small block to edit its details.
 Month also fits the screen; its notes and longer writing sections have their own
@@ -21,14 +23,12 @@ under the ellipsis button.
 ## What it does
 
 - Draw, move, resize, label, and recolor time blocks across two facing pages.
-- Type natural shorthand such as `lunch 12–1`, `standup 9:30`, or
-  `gym 10pm–12`; text without a time becomes a todo.
 - Roll unfinished todos forward automatically while preserving their origin.
 - Record daily deliverables and free-form notes.
 - Track weekly habits and current streaks.
 - Switch among all hours, work hours, and off hours without deleting hidden
   events.
-- Opt into a desktop stationery margin for highlighters, an index card, and
+- Toggle a desktop stationery margin for highlighters, an index card, and
   sticky notes. New notes dock beside the book until dragged onto the paper.
   Phones hide the margin and its controls without losing the desktop preference
   or any notes.
@@ -51,9 +51,7 @@ the browser treats it like an ordinary website.
 
 ## Keyboard
 
-- `/` focuses today's quick-entry line.
 - `←` and `→` move by the current day, spread, week, or month when not editing text.
-- `Enter` submits a quick entry.
 
 ## Privacy and storage
 
@@ -74,6 +72,9 @@ The only network request is for IBM Plex Sans and IBM Plex Mono from Google
 Fonts. System-font fallbacks are used when offline.
 
 ## Status
+
+The per-day quick-entry line is paused. A shared entry line across the three
+notebooks is a future idea, not part of the current interface.
 
 The core planner is usable today. Export/import, accessibility review, automated
 interaction tests, and stronger mobile behavior would make sensible next
