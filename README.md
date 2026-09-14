@@ -10,10 +10,13 @@ index. Like a book with the heart, and optionally mark Recommend? and Reread?
 yes or no (tap the selected answer again to clear it). The left page holds first
 impressions, summary, and takeaways; the right holds final thoughts and unstructured
 notes that expand for long writing. Existing index notes appear in that notes area.
-Entries save automatically in this browser. On phones, pages stack vertically;
-weekly days and writing sections are selected with tabs. Month fits the screen,
-with its notes available on a separate section on phones. Controls sit below
-the paper; additional planner settings are under the ellipsis button.
+Entries save automatically in this browser. The remembered page/spread control
+is independent of day, week, and month. The complete seven-day week fits one
+page, including on phones: hour rows resize to the available height, with a
+shared time gutter and notes for every day. Tap a small block to edit its details.
+Month also fits the screen; its notes and longer writing sections have their own
+tabs in page mode. Controls sit below the paper; additional planner settings are
+under the ellipsis button.
 
 ## What it does
 
@@ -25,7 +28,10 @@ the paper; additional planner settings are under the ellipsis button.
 - Track weekly habits and current streaks.
 - Switch among all hours, work hours, and off hours without deleting hidden
   events.
-- Arrange highlighters, an index card, and sticky notes around the book.
+- Opt into a desktop stationery margin for highlighters, an index card, and
+  sticky notes. New notes dock beside the book until dragged onto the paper.
+  Phones hide the margin and its controls without losing the desktop preference
+  or any notes.
 - Jump between days with the mini calendar or arrow keys.
 
 ## Try it locally
@@ -46,7 +52,7 @@ the browser treats it like an ordinary website.
 ## Keyboard
 
 - `/` focuses today's quick-entry line.
-- `←` and `→` move between two-day spreads when you are not editing text.
+- `←` and `→` move by the current day, spread, week, or month when not editing text.
 - `Enter` submits a quick entry.
 
 ## Privacy and storage

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=spines-3">
+<link rel="stylesheet" href="./styles.css?v=week-4">
 </head>
 <body>
 
@@ -46,9 +46,15 @@
 
 <section id="shelf" class="shelf" aria-label="Bookshelf"></section>
 <main class="scene" id="scene">
+  <div class="book-navigation">
   <nav class="book-tabs" aria-label="Planner view">
     <button data-mode="day">day</button><button data-mode="week">week</button><button data-mode="month">month</button>
   </nav>
+  <nav class="paper-controls" aria-label="Paper layout">
+    <button data-paper="page">page</button><button data-paper="spread">spread</button>
+    <button id="toggleMargin" aria-pressed="false">margin</button>
+  </nav>
+  </div>
   <p class="mobile-sheet-hint" id="mobileSheetHint" hidden>Swipe across the paper to see the rest →</p>
   <div class="book" id="book" tabindex="0" aria-label="Open notebook">
     <section class="page" data-side="left"></section>
@@ -59,6 +65,6 @@
 
 <div class="popover" id="popover"></div>
 
-<script src="./app.js?v=spines-3"></script>
+<script src="./app.js?v=week-4"></script>
 </body>
 </html>

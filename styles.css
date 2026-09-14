@@ -642,6 +642,90 @@ body[data-surface="tracker"] #toggleTools { display: none; }
   .day-book, .journal-book { display: grid; grid-template-columns: 1fr 1fr; }
   .page-body { grid-template-columns: 1fr; overflow: auto; }
 }
+
+/* Page/spread is independent of the calendar period. */
+body { --paper-width: 1180px; --rail-width: clamp(100px, 20vw, 232px); }
+body[data-paper="page"] { --paper-width: 680px; }
+.book-navigation { display: flex; align-items: center; justify-content: space-between; width: min(var(--paper-width), 100%); margin: 0 auto; gap: 6px; min-height: 32px; }
+.book-navigation .book-tabs { margin: 0; padding-left: 0; }
+.paper-controls { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
+.paper-controls button { font-size: 11px; min-height: 30px; padding: 3px 7px; color: var(--ink-2); }
+.paper-controls button[aria-pressed="true"] { color: var(--ink); box-shadow: inset 0 -1px var(--ink-2); }
+#toggleMargin { margin-left: 6px; }
+.book { width: min(var(--paper-width), 100%); }
+body[data-paper="page"] .book::before { display: none; }
+body[data-paper="page"] .day-book { display: block; }
+body[data-paper="page"] .day-book .page { height: 100%; box-shadow: none; }
+body[data-paper="page"] .journal-book { display: flex; flex-direction: column; }
+body[data-paper="page"] .journal-book[data-part="0"] .journal-right,
+body[data-paper="page"] .journal-book[data-part="1"] .journal-left { display: none; }
+body[data-paper="page"] .journal-book .page { box-shadow: none; }
+body[data-paper="page"] .month-body { display: block; }
+body[data-paper="page"] .month-calendar { height: 100%; }
+body[data-paper="page"] .month-notes { height: 100%; padding-left: 0; }
+body[data-paper="page"] .month-book[data-part="0"] .month-notes,
+body[data-paper="page"] .month-book[data-part="1"] .month-calendar { display: none; }
+.scene .stationery { display: none; overflow: clip; }
+.margin-open .scene { padding-right: calc(20px + var(--rail-width)); padding-left: 28px; }
+.margin-open .scene .stationery { display: block; }
+.margin-open .stationery > [data-docked="true"] { width: min(224px, calc(var(--rail-width) - 24px)); }
+.margin-open .stationery .sticky[data-docked="true"] { width: min(180px, calc(var(--rail-width) - 24px)); }
+.stationery > [data-docked="false"] { z-index: 4; }
+.week-sheet .week-columns { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding-left: 34px; overflow: visible; }
+.week-sheet .week-day { display: grid; grid-template-rows: 62px auto 60px minmax(0, 1fr); min-width: 0; padding: 0; border-left: 1px solid var(--line); overflow: visible; }
+.week-sheet .week-day:first-child { border-left: 0; }
+.week-sheet .week-day-head { height: 62px; min-height: 0; display: block; padding: 0 3px 4px; overflow: hidden; }
+.week-sheet .date-heading { display: flex; gap: 4px; align-items: baseline; min-height: 30px; }
+.week-sheet .date-heading > span { font-size: 9px; letter-spacing: .02em; }
+.week-sheet .date-heading strong { font-size: 22px; }
+.week-sheet .week-title { font-size: 10px; min-height: 18px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-top: 0; }
+.week-sheet .timeline { padding: 4px 0 14px; margin: 0; display: block; }
+.week-sheet .grid { border-left: 0; }
+.week-sheet .hour-label { left: -35px; width: 29px; white-space: nowrap; font-size: 9px; }
+.week-sheet .week-todos { display: block; margin: 0; padding: 5px 3px; min-height: 0; overflow: auto; }
+.week-sheet .week-notes { display: flex; margin: 0; padding: 5px 3px 0; min-height: 0; overflow: auto; }
+.week-sheet .week-notes .notes-text { min-height: 0; font-size: 11px; line-height: 20px; background-image: repeating-linear-gradient(transparent 0 19px, var(--line) 19px 20px); }
+.week-sheet h3 { font-size: 8px; margin: 0 0 3px; letter-spacing: .05em; }
+.week-sheet .todo { font-size: 10px; gap: 3px; }
+.week-sheet .todo-text { font-size: 10px; min-height: 15px; padding: 0; }
+.week-sheet .check { width: 11px; height: 11px; font-size: 10px; margin-top: 2px; }
+.week-sheet .todo .del, .week-sheet .todo .swatch-btn { display: none; }
+.week-sheet .add { min-height: 18px; font-size: 9px; margin-top: 0; }
+.week-sheet .block { border-radius: 3px; padding: 1px 2px; font-size: 10px; }
+.week-sheet .block-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 !important; }
+.week-sheet .block:hover { min-height: 0; padding: 1px 2px; }
+.week-sheet .block .del, .week-sheet .block .swatch-btn { display: none; }
+.block-editor { border: 1px solid var(--line); border-radius: 6px; padding: 24px; width: min(380px, calc(100vw - 32px)); color: var(--ink); box-shadow: 0 12px 40px #0003; }
+.block-editor::backdrop { background: #3334; }
+.block-editor form { display: grid; gap: 16px; }
+.block-editor h3 { margin: 0; font-size: 12px; color: var(--ink-2); font-weight: 400; }
+.block-editor input { width: 100%; font: 16px var(--font); border: 0; border-bottom: 1px solid var(--line); padding: 8px 0; }
+.block-editor select { font-size: 16px; min-height: 38px; }
+.block-editor-times, .block-editor-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.block-editor-actions button { min-height: 38px; padding: 4px 8px; }
+.block-editor [role="alert"] { margin: 0; color: #9a554d; font-size: 12px; }
+@media (max-width: 700px) {
+  .book-navigation { gap: 0; }
+  .book-navigation .book-tabs button { min-height: 30px; padding: 5px 8px; font-size: 11px; }
+  .paper-controls button { font-size: 10px; padding: 3px 5px; }
+  #toggleMargin, #addSticky, .margin-open .scene .stationery { display: none; }
+  .margin-open .scene { padding-right: 8px; padding-left: 8px; }
+  .week-sheet { padding: 10px 5px 12px; }
+  .week-sheet .week-columns { padding-left: 29px; }
+  .week-sheet .week-day { grid-template-rows: 48px auto 50px minmax(0, 1fr); }
+  .week-sheet .week-day-head { height: 48px; padding-left: 2px; padding-right: 1px; }
+  .week-sheet .date-heading { flex-direction: column; gap: 0; align-items: flex-start; line-height: 1.1; min-height: 30px; }
+  .week-sheet .date-heading strong { font-size: 17px; }
+  .week-sheet .date-heading > span { font-size: 8px; }
+  .week-sheet .hour-label { left: -29px; width: 25px; font-size: 8px; }
+  .week-sheet .week-title { font-size: 8px; }
+  .week-sheet .week-notes .notes-text { font-size: 10px; }
+  body[data-paper="spread"] .day-book { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  body[data-paper="spread"] .day-book .page[data-side="right"] { display: flex; }
+  body[data-paper="spread"] .day-book .page { padding: 8px; }
+  body[data-paper="spread"] .day-book .page-head { flex-wrap: wrap; }
+  body[data-paper="spread"] .day-book .page-title { flex-basis: 100%; }
+}
 @media (max-width: 700px) {
   .scene { padding: 8px 8px 58px; }
   .toolbar { padding: 3px 8px; flex-wrap: nowrap; gap: 3px; }
@@ -658,14 +742,8 @@ body[data-surface="tracker"] #toggleTools { display: none; }
   .page-body { display: block; min-height: 0; }
   .side { padding-top: 0; border: 0; gap: 12px; }
   .day-book[data-part="0"] .side, .day-book[data-part="1"] .timeline { display: none; }
-  .week-sheet, .month-sheet { min-width: 0; padding: 12px; flex: 1; min-height: 0; }
-  .week-columns { display: block; overflow: auto; }
-  .week-day { border: 0; padding: 10px 0 0; }
-  .week-day-head { min-height: 0; display: flex; gap: 12px; align-items: center; }
-  .week-day .timeline { margin-top: 8px; }
-  .week-day .hour-label { font-size: 9px; white-space: nowrap; }
-  .week-day .block { font-size: 13px; }
-  .week-book[data-part="0"] .week-todos, .week-book[data-part="0"] .week-notes, .week-book[data-part="1"] .timeline { display: none; }
+  .week-sheet, .month-sheet { min-width: 0; flex: 1; min-height: 0; }
+  .month-sheet { padding: 12px; }
   .month-body { display: block; }
   .month-calendar { height: 100%; }
   .month-notes { height: 100%; padding: 0; }
