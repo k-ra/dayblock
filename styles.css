@@ -646,6 +646,11 @@ body[data-surface="tracker"] #toggleTools { display: none; }
 /* Page/spread is independent of the calendar period. */
 body { --paper-width: 1180px; --rail-width: clamp(100px, 20vw, 232px); }
 body[data-paper="page"] { --paper-width: 680px; }
+/* Keep desktop paper proportionate to its height, not the monitor's width. */
+@media (min-width: 701px) {
+  body { --paper-width: clamp(760px, calc(150dvh - 180px), 1000px); }
+  body[data-paper="page"] { --paper-width: clamp(440px, calc(85dvh - 102px), 580px); }
+}
 .book-navigation { display: flex; align-items: center; justify-content: space-between; width: min(var(--paper-width), 100%); margin: 0 auto; gap: 6px; min-height: 32px; }
 .book-navigation .book-tabs { margin: 0; padding-left: 0; }
 .paper-controls { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
