@@ -986,15 +986,14 @@ function renderShelf() {
   const shelf = $('#shelf');
   shelf.innerHTML = '';
   const stack = el('div', { class: 'book-stack' });
-  const ideas = state.trackers.ideas.filter(x => !x.archived).length;
-  const read = state.trackers.reading.filter(x => !x.archived && x.status === 'finished').length;
   const volumes = [
-    ['planner', '01', 'The daily planner', 'day · week · month', 'make a little room'],
-    ['ideas', '02', 'An idea notebook', `${ideas} ${ideas === 1 ? 'idea' : 'ideas'} tucked away`, 'collect · consider · make'],
-    ['reading', '03', 'A reading life', `${read} ${read === 1 ? 'book' : 'books'} read`, 'a record of other worlds'],
+    ['planner', 'The daily planner'],
+    ['ideas', 'An idea notebook'],
+    ['reading', 'A reading life'],
   ];
-  for (const [kind, number, title, detail, subtitle] of volumes) {
-    const volume = el('button', { class: `stack-volume volume-${kind}`, 'aria-label': `Open ${title}`, title });
+  for (const [kind, title] of volumes) {
+    const volume = el('button', { class: `stack-volume volume-${kind}`, 'aria-label': `Open ${title}`, title },
+      el('span', { class: 'volume-label' }, el('strong', {}, title)));
     volume.onclick = () => openBook(kind);
     stack.append(volume);
   }
