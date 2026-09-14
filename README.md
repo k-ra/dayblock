@@ -11,7 +11,9 @@ yes or no (tap the selected answer again to clear it). The left page holds first
 impressions, summary, and takeaways; the right holds final thoughts and unstructured
 notes that expand for long writing. Existing index notes appear in that notes area.
 Entries save automatically in this browser. On phones, pages stack vertically;
-wide weekly and monthly paper scrolls horizontally inside the book.
+weekly days and writing sections are selected with tabs. Month fits the screen,
+with its notes available on a separate section on phones. Controls sit below
+the paper; additional planner settings are under the ellipsis button.
 
 ## What it does
 

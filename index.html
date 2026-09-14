@@ -7,12 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=journal-1">
+<link rel="stylesheet" href="./styles.css?v=paper-2">
 </head>
 <body>
 
 <header class="toolbar">
-  <button id="backShelf">‹ bookshelf</button>
+  <button id="backShelf" aria-label="Bookshelf" title="Bookshelf">⌂</button>
+  <button id="toggleTools" aria-label="Planner settings" aria-expanded="false">⋯</button>
   <div class="group">
     <button id="prev" title="previous spread (←)">‹</button>
     <button id="today">today</button>
@@ -58,6 +59,6 @@
 
 <div class="popover" id="popover"></div>
 
-<script src="./app.js?v=journal-1"></script>
+<script src="./app.js?v=paper-2"></script>
 </body>
 </html>

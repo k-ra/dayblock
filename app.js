@@ -103,6 +103,9 @@ let activeBook = 'shelf';
 let trackerKind = 'ideas';
 let showArchived = false;
 let journalId = null;
+const phone = matchMedia('(max-width: 700px)');
+let paperPart = 0;
+phone.addEventListener('change', () => render());
 let cursor = todayKey();          // left page of the current spread
 let lastToday = todayKey();
 const fresh = new Set();          // ids of just-drawn blocks; they vanish if left untitled
@@ -135,7 +138,8 @@ function layout() {
 
   const visible = parts.filter(p => p[0] === 'seg').reduce((s, p) => s + p[2] - p[1], 0);
   const gaps = parts.filter(p => p[0] === 'gap').length;
-  const pph = clamp(((isWeek() ? 320 : GRID_H) - gaps * GAP_H) / visible, isWeek() ? 16 : 36, 96);
+  const target = phone.matches ? Math.max(160, innerHeight - (isWeek() ? 330 : 270)) : Math.max(160, innerHeight - (isWeek() ? 380 : 220));
+  const pph = Math.max(10, (target - gaps * GAP_H) / visible);
 
   let y = 0;
   const items = parts.map(([type, from, to]) => {
@@ -310,7 +314,7 @@ function renderToolbar() {
   $('.hours').style.opacity = s.view === 'all' ? .5 : 1;
 
   const start = isMonth() ? monthStart(cursor) : isWeek() ? weekStart(cursor) : cursor;
-  const a = fromKey(start), b = fromKey(addDays(start, isWeek() ? 6 : 1));
+  const a = fromKey(start), b = fromKey(addDays(start, isWeek() ? 6 : phone.matches ? 0 : 1));
   const mo = d => MONTHS[d.getMonth()].slice(0, 3);
   $('#range').textContent = a.getMonth() === b.getMonth()
     ? `${mo(a)} ${a.getDate()} – ${b.getDate()}, ${b.getFullYear()}`
@@ -319,6 +323,7 @@ function renderToolbar() {
 }
 
 function setMode(mode, key = cursor) {
+  paperPart = 0;
   activeBook = 'planner';
   cursor = key;
   state.settings.mode = mode;
@@ -329,7 +334,7 @@ function navigate(direction) {
   if (isMonth()) {
     const d = fromKey(cursor);
     cursor = keyOf(new Date(d.getFullYear(), d.getMonth() + direction, 1));
-  } else cursor = addDays(cursor, direction * (isWeek() ? 7 : 2));
+  } else cursor = addDays(cursor, direction * (isWeek() ? 7 : phone.matches ? 1 : 2));
   render();
 }
 
@@ -388,7 +393,7 @@ function renderPage(pageEl, key) {
       el('div', { class: 'month' }, `${MONTHS[date.getMonth()]} ${date.getFullYear()}`)),
     title));
 
-  if (pageEl.dataset.side === 'right') renderHabits(pageEl, key);
+  if (pageEl.dataset.side === (phone.matches ? 'left' : 'right')) renderHabits(pageEl, key);
 
   const timeline = el('div', { class: 'timeline' });
   renderTimeline(timeline, key);
@@ -881,10 +886,21 @@ function renderWeek() {
   const start = weekStart(cursor);
   const sheet = el('section', { class: 'wide-sheet week-sheet', 'aria-label': 'Weekly planner' });
   sheet.append(el('header', { class: 'sheet-heading' },
-    el('h1', {}, 'This week'), el('span', {}, 'a little space for every day')));
+    el('h1', {}, 'This week')));
+  if (phone.matches) {
+    const days = el('nav', { class: 'paper-segments', 'aria-label': 'Day of week' });
+    for (let i = 0; i < 7; i++) {
+      const key = addDays(start, i);
+      const button = el('button', { 'aria-pressed': String(key === cursor) }, DOW[fromKey(key).getDay()].slice(0, 2));
+      button.onclick = () => { cursor = key; render(); };
+      days.append(button);
+    }
+    sheet.append(days);
+  }
   const columns = el('div', { class: 'week-columns' });
   for (let i = 0; i < 7; i++) {
     const key = addDays(start, i), d = dayData(key);
+    if (phone.matches && key !== cursor) continue;
     const column = el('section', { class: 'week-day', 'data-key': key });
     const title = el('div', { class: 'week-title', 'data-placeholder': 'a focus for today', 'aria-label': 'Day title' }, d.title);
     bindEditable(title, v => { d.title = v; save(); });
@@ -952,6 +968,7 @@ function renderMonth() {
 
 /* ---------- the stack and its tracking notebooks ---------- */
 function openBook(kind) {
+  paperPart = 0;
   journalId = null;
   activeBook = kind === 'planner' ? 'planner' : 'tracker';
   if (activeBook === 'tracker') trackerKind = kind;
@@ -960,12 +977,14 @@ function openBook(kind) {
   window.scrollTo(0, 0);
 }
 $('#backShelf').onclick = () => { activeBook = 'shelf'; render(); window.scrollTo(0, 0); };
+$('#toggleTools').onclick = e => {
+  const open = document.body.classList.toggle('tools-open');
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+};
 
 function renderShelf() {
   const shelf = $('#shelf');
   shelf.innerHTML = '';
-  shelf.append(el('header', { class: 'shelf-heading' }, el('span', { class: 'shelf-eyebrow' }, 'SPREAD / YOUR BOOKS'),
-    el('h1', {}, 'A place to keep things.'), el('p', {}, 'The days, the ideas, the books you carry with you.')));
   const stack = el('div', { class: 'book-stack' });
   const ideas = state.trackers.ideas.filter(x => !x.archived).length;
   const read = state.trackers.reading.filter(x => !x.archived && x.status === 'finished').length;
@@ -975,14 +994,11 @@ function renderShelf() {
     ['reading', '03', 'A reading life', `${read} ${read === 1 ? 'book' : 'books'} read`, 'a record of other worlds'],
   ];
   for (const [kind, number, title, detail, subtitle] of volumes) {
-    const volume = el('button', { class: `stack-volume volume-${kind}`, 'aria-label': `Open ${title}` },
-      el('span', { class: 'volume-number' }, number),
-      el('span', { class: 'volume-label' }, el('strong', {}, title), el('small', {}, subtitle)),
-      el('span', { class: 'volume-detail' }, detail), el('span', { class: 'volume-open', 'aria-hidden': 'true' }, '↗'));
+    const volume = el('button', { class: `stack-volume volume-${kind}`, 'aria-label': `Open ${title}`, title });
     volume.onclick = () => openBook(kind);
     stack.append(volume);
   }
-  shelf.append(stack, el('p', { class: 'shelf-footnote' }, 'Choose a spine. Open a book. Stay awhile.'));
+  shelf.append(stack);
 }
 
 function renderTracker() {
@@ -1113,7 +1129,8 @@ function render() {
   scene.hidden = shelfOpen;
   $('.toolbar').hidden = shelfOpen;
   $('.book-tabs').hidden = !plannerOpen;
-  $('#mobileSheetHint').hidden = !plannerOpen || (!isWeek() && !isMonth());
+  $('#mobileSheetHint').hidden = true;
+  document.body.dataset.surface = shelfOpen ? 'shelf' : plannerOpen ? 'planner' : 'tracker';
   document.querySelectorAll('.toolbar > .group, .toolbar > .spacer').forEach(n => n.hidden = !plannerOpen);
   if (shelfOpen) { renderShelf(); return; }
   renderToolbar();
@@ -1133,6 +1150,19 @@ function render() {
   }
   stationery.hidden = !plannerOpen;
   if (plannerOpen) renderDesk();
+  if (phone.matches) {
+    if (plannerOpen || journalId) {
+      const labels = journalId ? ['reflection', 'notes'] : isMonth() ? ['month', 'notes'] : ['schedule', 'notes'];
+      const segments = el('nav', { class: 'paper-segments section-segments', 'aria-label': 'Paper section' });
+      labels.forEach((label, i) => {
+        const button = el('button', { 'aria-pressed': String(paperPart === i) }, label);
+        button.onclick = () => { paperPart = i; render(); };
+        segments.append(button);
+      });
+      book.prepend(segments);
+      book.dataset.part = String(paperPart);
+    }
+  }
 }
 
 carryOver();
