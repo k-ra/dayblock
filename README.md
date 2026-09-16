@@ -11,14 +11,18 @@ yes or no (tap the selected answer again to clear it). The left page holds first
 impressions, summary, and takeaways; the right holds final thoughts and unstructured
 notes that expand for long writing. Existing index notes appear in that notes area.
 Entries save automatically in this browser. Desktop starts with a spread and
-stationery margin; phones start with a single page and no margin. Page/spread
+an optional stationery margin; phones start with a single page and no margin.
+Every notebook uses the same paper sizing and tucks the margin away when there isn't room
+for both, without deleting notes or forgetting the margin preference. Page/spread
 choices are remembered separately for desktop and phone, independently of day,
 week, and month. The complete seven-day week fits one
 page, including on phones: hour rows resize to the available height, with a
 shared time gutter and notes for every day. Tap a small block to edit its details.
 Month also fits the screen; its notes and longer writing sections have their own
-tabs in page mode. Controls sit below the paper; additional planner settings are
-under the ellipsis button.
+tabs along the bottom of its paper in page mode. Day, week, and month share a
+date-heading style; weeks show their actual date range. Page/spread/margin controls stay above the paper in every
+notebook, alongside day/week/month in the planner. Its ellipsis reveals settings inline in the bottom bar, wrapping
+within the bar on small screens. Reading-journal navigation stays below the paper.
 
 ## What it does
 
@@ -32,6 +36,9 @@ under the ellipsis button.
   configuration. See [Google Calendar setup](GOOGLE-CALENDAR.md).
 - Switch among all hours, work hours, and off hours without deleting hidden
   events.
+- Optionally fold completed hours on today's daily page. The current hour stays
+  visible; “earlier hours · show” unfolds the page. Weekly views retain a shared
+  time scale, and historical/future daily pages stay unchanged.
 - Toggle a desktop stationery margin for highlighters, an index card, and
   sticky notes. New notes dock beside the book until dragged onto the paper.
   Phones hide the margin and its controls without losing the desktop preference
@@ -72,6 +79,7 @@ only copy of anything important.
 index.html   page structure and controls
 styles.css   book, paper, stationery, and responsive layout
 app.js       planner state, interactions, and local persistence
+planner-layout.js  book-first sizing and reversible timeline geometry
 favicon.svg  the little notebook site icon
 calendar-config.js  public app OAuth client ID (no secret)
 google-calendar.js  read-only import and authorization
@@ -86,8 +94,8 @@ authorization library. Calendar API requests run only after authorization.
 The per-day magic entry line is removed. The bottom catchall is deliberately
 unsorted and shared; it does not guess times or route text into other notebooks.
 
-Run `TZ=America/Los_Angeles node --test tests/google-calendar.test.cjs` for the
-synthetic Calendar import tests. Live Google sign-in still needs OAuth setup.
+Run `TZ=America/Los_Angeles node --test tests/*.test.cjs` for the planner geometry
+and synthetic Calendar import tests. Live Google sign-in still needs OAuth setup.
 
 The core planner is usable today. Export/import, accessibility review, automated
 interaction tests, and stronger mobile behavior would make sensible next

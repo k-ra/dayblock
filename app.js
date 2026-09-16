@@ -7,7 +7,6 @@ const STORAGE_KEY = 'spread-planner.v1';
 const DAY_START = 8;      // 8 am
 const DAY_END = 24;       // midnight
 const SNAP = 0.25;        // 15 minutes
-const GAP_H = 26;         // height of a collapsed (hidden) span
 
 const PALETTE = ['yellow', 'peach', 'pink', 'lilac', 'blue', 'sky', 'mint', 'green', 'grey', 'none'];
 const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -115,7 +114,9 @@ let notebookDetail = null;
 const phone = matchMedia('(max-width: 700px)');
 const paperMode = () => paperPreferences[phone.matches ? 'phone' : 'desktop'];
 const singlePage = () => paperMode() === 'page';
-const marginVisible = () => !phone.matches && paperPreferences.margin;
+let bookFrame = null;
+const gridLayouts = new WeakMap();
+const marginVisible = () => !phone.matches && paperPreferences.margin && bookFrame?.margin !== false;
 let paperPart = 0;
 phone.addEventListener('change', () => render());
 let resizeTimer;
@@ -150,50 +151,16 @@ function carryOver() {
 }
 
 /* ---------- time layout (work / off / all hours) ---------- */
-function layout() {
-  const { view, workStart: ws, workEnd: we } = state.settings;
-  let parts;
-  if (view === 'work') parts = [['gap', DAY_START, ws], ['seg', ws, we], ['gap', we, DAY_END]];
-  else if (view === 'off') parts = [['seg', DAY_START, ws], ['gap', ws, we], ['seg', we, DAY_END]];
-  else parts = [['seg', DAY_START, DAY_END]];
-  parts = parts.filter(p => p[2] > p[1]);
-
-  const visible = parts.filter(p => p[0] === 'seg').reduce((s, p) => s + p[2] - p[1], 0);
-  const gaps = parts.filter(p => p[0] === 'gap').length;
-  // Use the same height for every day and for all pointer/time conversions.
-  // Reserve the lower part of weekly paper for each day's writing.
-  const paperHeight = Math.max(240, innerHeight - (phone.matches ? 132 : 144));
-  const target = isWeek() ? Math.max(80, Math.min(560, paperHeight * .56, paperHeight - 250)) : Math.max(160, paperHeight - 150);
-  const pph = Math.max(6, (target - gaps * GAP_H) / visible);
-
-  let y = 0;
-  const items = parts.map(([type, from, to]) => {
-    const h = type === 'seg' ? (to - from) * pph : GAP_H;
-    const it = { type, from, to, y, h };
-    y += h;
-    return it;
-  });
-  return { items, pph, height: y };
+function layout(key = cursor) {
+  return window.DayblockLayout.timeline({ ...state.settings, hidePast: !!state.settings.hidePastHours,
+    today: key === todayKey(), now: nowHours(), weekly: isWeek(),
+    paperHeight: bookFrame?.height || Math.max(240, innerHeight - (phone.matches ? 132 : 144)) });
 }
-function timeToY(t, L) {
-  for (const it of L.items) {
-    if (t >= it.from && t <= it.to) return it.y + (t - it.from) / (it.to - it.from) * it.h;
-  }
-  return t < L.items[0].from ? 0 : L.height;
-}
-function yToTime(y, L) {
-  for (const it of L.items) {
-    if (y >= it.y && y <= it.y + it.h) {
-      if (it.type === 'gap') return (y - it.y) < it.h / 2 ? it.from : it.to;
-      return it.from + (y - it.y) / L.pph;
-    }
-  }
-  return y < 0 ? DAY_START : DAY_END;
-}
-const hiddenIn = (b, L) => L.items.some(it => it.type === 'gap' && b.start >= it.from && b.end <= it.to);
+const { timeToY, yToTime } = window.DayblockLayout;
+const hiddenIn = (b, L) => L.items.some(it => it.type !== 'seg' && b.start >= it.from && b.end <= it.to);
 
 function positionBlock(node, start, end, L) {
-  const top = timeToY(start, L);
+  const top = timeToY(Math.max(start, L.start), L);
   const h = Math.max(timeToY(end, L) - top, 2);
   node.style.top = `${top}px`;
   node.style.height = `${h}px`;
@@ -373,7 +340,13 @@ function renderToolbar() {
   document.querySelectorAll('.paper-controls [data-paper]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.paper === paperMode())));
   $('#toggleMargin').hidden = phone.matches;
   $('#toggleMargin').setAttribute('aria-pressed', String(marginVisible()));
+  $('#toggleMargin').title = paperPreferences.margin && !marginVisible() && !phone.matches
+    ? 'Margin tucked away to keep the book full size. It will return when there is room.' : 'Show or hide stationery beside the book';
+  $('#toggleMargin').dataset.tucked = String(!phone.matches && !!paperPreferences.margin && !marginVisible());
   $('#addSticky').hidden = phone.matches;
+  $('#hidePastHours').checked = !!s.hidePastHours;
+  $('#hidePastHours').disabled = isWeek() || isMonth();
+  $('#hidePastHours').closest('label').title = 'Fold completed hours on today’s daily page. Weekly columns keep their shared time scale.';
   document.querySelectorAll('[data-mode]').forEach(b => {
     b.setAttribute('aria-pressed', String(b.dataset.mode === s.mode));
   });
@@ -400,6 +373,21 @@ document.querySelectorAll('.paper-controls [data-paper]').forEach(b => b.onclick
   paperPart = 0; save(); render();
 });
 $('#toggleMargin').onclick = () => { paperPreferences.margin = !paperPreferences.margin; save(); render(); };
+$('#hidePastHours').onchange = e => { state.settings.hidePastHours = e.target.checked; save(); render(); };
+
+function updateBookFrame() {
+  if (activeBook === 'shelf') return;
+  const footer = Math.ceil($('.toolbar').getBoundingClientRect().height);
+  const height = Math.max(240, innerHeight - footer - (phone.matches ? 52 : 64));
+  // Use the same closed-bar proportions for every notebook. Extra navigation
+  // or expanded settings may shorten the paper, but never change its width.
+  const sizingHeight = Math.max(240, innerHeight - 81 - (phone.matches ? 52 : 64));
+  bookFrame = { ...window.DayblockLayout.fitBook({ width: innerWidth, paperHeight: sizingHeight,
+    single: singlePage(), phone: phone.matches, marginRequested: !!paperPreferences.margin }), height, footer };
+  scene.style.setProperty('--book-paper-width', `${bookFrame.width}px`);
+  scene.style.setProperty('--book-paper-height', `${height}px`);
+  scene.style.setProperty('--book-footer-height', `${footer}px`);
+}
 
 function setMode(mode, key = cursor) {
   paperPart = 0;
@@ -453,6 +441,15 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- a page (one day) ---------- */
+function plannerHeading(value, label, context, { today = false, title = null } = {}) {
+  return el('header', { class: `page-head planner-heading${today ? ' today' : ''}` },
+    el('h1', { class: 'day-num' }, value),
+    el('div', { class: 'planner-heading-context' },
+      label ? el('div', { class: 'dow' }, label) : null,
+      el('div', { class: 'month' }, context)),
+    title);
+}
+
 function renderPage(pageEl, key) {
   const d = dayData(key);
   const date = fromKey(key);
@@ -462,12 +459,8 @@ function renderPage(pageEl, key) {
   const title = el('div', { class: 'page-title', 'data-placeholder': 'title' });
   title.textContent = d.title;
   bindEditable(title, v => { d.title = v; save(); });
-  pageEl.append(el('div', { class: `page-head${key === todayKey() ? ' today' : ''}` },
-    el('div', { class: 'day-num' }, String(date.getDate())),
-    el('div', {},
-      el('div', { class: 'dow' }, DOW[date.getDay()]),
-      el('div', { class: 'month' }, `${MONTHS[date.getMonth()]} ${date.getFullYear()}`)),
-    title));
+  pageEl.append(plannerHeading(String(date.getDate()), DOW[date.getDay()],
+    `${MONTHS[date.getMonth()]} ${date.getFullYear()}`, { today: key === todayKey(), title }));
 
   if (pageEl.dataset.side === (singlePage() ? 'left' : 'right')) renderHabits(pageEl, key);
 
@@ -501,15 +494,23 @@ function renderTimeline(container, key) {
   const imported = calendarEvents(key).filter(event => !event.allDay && event.end > DAY_START && event.start < DAY_END)
     .map(event => ({ ...event, start: Math.max(DAY_START, event.start), end: Math.min(DAY_END, event.end) }));
   const blocks = [...d.blocks, ...imported];
-  const L = layout();
+  const L = layout(key);
   const grid = el('div', { class: 'grid', 'data-day': key, style: `height:${L.height}px` });
+  gridLayouts.set(grid, L);
 
   for (const it of L.items) {
-    if (it.type === 'gap') {
+    if (it.type !== 'seg') {
       const n = blocks.filter(b => hiddenIn(b, L) && b.start >= it.from && b.end <= it.to).length;
-      grid.append(el('div', {
-        class: 'gap', style: `top:${it.y}px;height:${it.h}px`, title: 'show all hours',
-      }, `${fmtRange(it.from, it.to)}${n ? ` · ${n} hidden` : ''}`));
+      const gap = el('button', { type: 'button',
+        class: `gap${it.type === 'past' ? ' past-gap' : ''}`, style: `top:${it.y}px;height:${it.h}px`, title: it.type === 'past' ? 'Show past hours' : 'show all hours',
+      }, it.type === 'past' ? `earlier hours${n ? ` · ${n} ${n === 1 ? 'event' : 'events'}` : ''} · show` : `${fmtRange(it.from, it.to)}${n ? ` · ${n} hidden` : ''}`);
+      gap.onclick = e => {
+        e.stopPropagation();
+        if (it.type === 'past') state.settings.hidePastHours = false;
+        else state.settings.view = 'all';
+        save(); render();
+      };
+      grid.append(gap);
       continue;
     }
     for (let h = Math.ceil(it.from); h <= it.to; h++) {
@@ -525,14 +526,14 @@ function renderTimeline(container, key) {
   }
 
   const blocksLayer = el('div', { class: 'blocks' });
-  const ln = lanes(blocks);
+  const ln = lanes(blocks.filter(b => !hiddenIn(b, L)));
   for (const b of blocks) {
     if (hiddenIn(b, L)) continue;
     const { lane, count } = ln[b.id];
     if (b.readonly) {
       const node = calendarButton(b, 'block calendar-block hl-blue');
-      node.style.left = `calc(${lane * 100 / count}% + 3px)`;
-      node.style.width = `calc(${100 / count}% - 7px)`;
+      node.style.left = `${lane * 100 / count}%`;
+      node.style.width = `${100 / count}%`;
       positionBlock(node, b.start, b.end, L);
       blocksLayer.append(node); continue;
     }
@@ -540,8 +541,8 @@ function renderTimeline(container, key) {
     node.addEventListener('keydown', e => {
       if (e.target === node && ['Enter', ' '].includes(e.key)) { e.preventDefault(); openBlockEditor(key, b); }
     });
-    node.style.left = `calc(${lane * 100 / count}% + 3px)`;
-    node.style.width = `calc(${100 / count}% - 7px)`;
+    node.style.left = `${lane * 100 / count}%`;
+    node.style.width = `${100 / count}%`;
     positionBlock(node, b.start, b.end, L);
 
     const t = el('div', { class: 'block-title', 'data-placeholder': '…' });
@@ -569,7 +570,7 @@ function renderTimeline(container, key) {
   // Native touch scrolling owns swipes; a completed tap still edits or creates.
   grid.addEventListener('click', e => {
     if (e.pointerType !== 'touch') return;
-    if (e.target.closest('.gap')) { state.settings.view = 'all'; save(); render(); return; }
+    if (e.target.closest('.gap')) return;
     const block = e.target.closest('.block');
     if (block) {
       if (isWeek() || block.classList.contains('compact')) openBlockEditor(key, d.blocks.find(b => b.id === block.dataset.id));
@@ -577,7 +578,7 @@ function renderTimeline(container, key) {
       return;
     }
     if (e.target.closest('.hour-label')) return;
-    const start = clamp(snap(yToTime(e.clientY - grid.getBoundingClientRect().top, L)), DAY_START, DAY_END - SNAP);
+    const start = clamp(snap(yToTime(e.clientY - grid.getBoundingClientRect().top, L)), L.start, DAY_END - SNAP);
     addBlock(key, start, Math.min(start + .5, DAY_END));
   });
   container.append(grid);
@@ -597,8 +598,12 @@ function renderNow(grid, key, L) {
 }
 function tick() {
   if (todayKey() !== lastToday) { lastToday = todayKey(); carryOver(); render(); return; }
-  const L = layout();
-  for (const g of document.querySelectorAll('.grid')) renderNow(g, g.dataset.day, L);
+  for (const g of document.querySelectorAll('.grid')) {
+    const L = gridLayouts.get(g);
+    if (!L) continue;
+    if (layout(g.dataset.day).start !== L.start && !document.activeElement?.isContentEditable && !document.body.classList.contains('dragging') && !document.querySelector('dialog[open]')) { render(); return; }
+    renderNow(g, g.dataset.day, L);
+  }
 }
 setInterval(tick, 30 * 1000);
 
@@ -607,7 +612,7 @@ function onGridPointerDown(e, key) {
   if (e.button !== 0) return;
   const grid = e.currentTarget;
   const d = dayData(key);
-  const L = layout();
+  const L = gridLayouts.get(grid) || layout(key);
   const blockEl = e.target.closest('.block');
 
   if (blockEl) {
@@ -621,6 +626,7 @@ function onGridPointerDown(e, key) {
     const dur = b.end - b.start;
     let cur = { day: key, start: b.start, end: b.end };
     let curGrid = grid;
+    let curLayout = L;
     trackPointer(e, blockEl, {
       move(ev) {
         if (resize) {
@@ -630,13 +636,14 @@ function onGridPointerDown(e, key) {
           const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.grid');
           if (over && over !== curGrid) {
             curGrid = over; cur.day = over.dataset.day;
+            curLayout = gridLayouts.get(over) || layout(cur.day);
             over.querySelector('.blocks').append(blockEl);
           }
           const y = ev.clientY - grabOffset - curGrid.getBoundingClientRect().top;
-          cur.start = clamp(snap(yToTime(y, L)), DAY_START, DAY_END - dur);
+          cur.start = clamp(snap(yToTime(y, curLayout)), Math.min(curLayout.start, DAY_END - dur), DAY_END - dur);
           cur.end = cur.start + dur;
         }
-        positionBlock(blockEl, cur.start, cur.end, L);
+        positionBlock(blockEl, cur.start, cur.end, curLayout);
         blockEl.querySelector('.block-time').textContent = `${fmtTime(cur.start)} – ${fmtTime(cur.end)}`;
       },
       end() {
@@ -651,13 +658,13 @@ function onGridPointerDown(e, key) {
     return;
   }
 
-  if (e.target.closest('.gap')) { state.settings.view = 'all'; save(); render(); return; }
+  if (e.target.closest('.gap')) return;
   if (e.target.closest('.hour-label')) return;
 
   // empty grid: drag to draw a block (or click for a 30-minute one)
   e.preventDefault();
   const rect = grid.getBoundingClientRect();
-  const anchor = clamp(snap(yToTime(e.clientY - rect.top, L)), DAY_START, DAY_END - SNAP);
+  const anchor = clamp(snap(yToTime(e.clientY - rect.top, L)), L.start, DAY_END - SNAP);
   let ghost = null;
   let cur = { start: anchor, end: anchor + SNAP };
   trackPointer(e, grid, {
@@ -666,7 +673,7 @@ function onGridPointerDown(e, key) {
         ghost = el('div', { class: `block ghost hl-${state.settings.color}` });
         grid.querySelector('.blocks').append(ghost);
       }
-      const t = clamp(snap(yToTime(ev.clientY - rect.top, L)), DAY_START, DAY_END);
+      const t = clamp(snap(yToTime(ev.clientY - rect.top, L)), L.start, DAY_END);
       cur = t >= anchor ? { start: anchor, end: Math.max(t, anchor + SNAP) } : { start: t, end: anchor };
       positionBlock(ghost, cur.start, cur.end, L);
     },
@@ -680,7 +687,7 @@ function addBlock(key, start, end, title = '') {
   dayData(key).blocks.push(b);
   if (!title) fresh.add(b.id);
   save(); render();
-  if (!title && (isWeek() || (end - start) * layout().pph < 30)) openBlockEditor(key, b);
+  if (!title && (isWeek() || (end - start) * layout(key).pph < 30)) openBlockEditor(key, b);
   else if (!title) {
     const t = $(`.block[data-id="${b.id}"] .block-title`);
     t && focusEditable(t);
@@ -993,9 +1000,12 @@ function dayHeading(key) {
 
 function renderWeek() {
   const start = weekStart(cursor);
+  const first = fromKey(start), last = fromKey(addDays(start, 6));
+  const period = first.getFullYear() !== last.getFullYear()
+    ? `${MONTHS[first.getMonth()]} ${first.getFullYear()} – ${MONTHS[last.getMonth()]} ${last.getFullYear()}`
+    : `${MONTHS[first.getMonth()]}${first.getMonth() !== last.getMonth() ? ` – ${MONTHS[last.getMonth()]}` : ''} ${last.getFullYear()}`;
   const sheet = el('section', { class: 'wide-sheet week-sheet', 'aria-label': 'Weekly planner' });
-  sheet.append(el('header', { class: 'sheet-heading' },
-    el('h1', {}, 'This week')));
+  sheet.append(plannerHeading(`${first.getDate()}–${last.getDate()}`, 'WEEK', period));
   const columns = el('div', { class: 'week-columns' });
   for (let i = 0; i < 7; i++) {
     const key = addDays(start, i), d = dayData(key);
@@ -1025,8 +1035,7 @@ function renderMonth() {
   const weeks = Math.ceil((offset + count) / 7);
   const start = weekStart(first);
   const sheet = el('section', { class: 'wide-sheet month-sheet', 'aria-label': 'Monthly planner' });
-  sheet.append(el('header', { class: 'sheet-heading' },
-    el('h1', {}, MONTHS[date.getMonth()]), el('span', {}, String(date.getFullYear()))));
+  sheet.append(plannerHeading(MONTHS[date.getMonth()], '', String(date.getFullYear())));
   const body = el('div', { class: 'month-body' });
   const calendar = el('div', { class: 'month-calendar', style: `--weeks:${weeks}` });
   for (let i = 0; i < 7; i++) calendar.append(el('div', { class: `month-weekday${i > 4 ? ' weekend' : ''}` }, DOW[(i + 1) % 7]));
@@ -1334,10 +1343,16 @@ function render() {
   document.body.dataset.surface = shelfOpen ? 'shelf' : plannerOpen ? 'planner' : 'tracker';
   document.body.dataset.paper = paperMode();
   document.body.classList.toggle('margin-open', !shelfOpen && marginVisible());
-  $('.book-navigation').classList.toggle('tracker-navigation', !plannerOpen);
+  const navigation = $('.book-navigation');
+  navigation.classList.toggle('tracker-navigation', !plannerOpen);
+  // Layout controls belong above every book. Context and journal-section
+  // navigation stay in the bottom bar; the same controls keep their handlers.
+  scene.prepend(navigation);
   document.querySelectorAll('.toolbar > .group, .toolbar > .spacer').forEach(n => n.hidden = !plannerOpen);
   $('#plannerTools').hidden = !plannerOpen || !document.body.classList.contains('tools-open');
   if (shelfOpen) { renderShelf(); return; }
+  updateBookFrame();
+  document.body.classList.toggle('margin-open', marginVisible());
   renderToolbar();
   if (!plannerOpen) viewSel.closest('.group').hidden = true;
   book.innerHTML = '';
@@ -1366,18 +1381,34 @@ function render() {
         button.onclick = () => { paperPart = i; render(); };
         segments.append(button);
       });
-      $('#paperSections').append(segments);
+      if (plannerOpen && isMonth()) book.append(segments);
+      else if (plannerOpen) book.prepend(segments);
+      else $('#paperSections').append(segments);
       book.dataset.part = String(paperPart);
     }
   }
+  // Journal section controls are added during rendering; include their height.
+  if (!plannerOpen) updateBookFrame();
 }
 
 carryOver();
 render();
+// Inline settings may wrap. Refit the paper to the actual bar height instead
+// of overlaying its bottom edge, including notebook navigation.
+let frameUpdatePending = false;
+new ResizeObserver(() => {
+  if (activeBook === 'shelf' || frameUpdatePending) return;
+  frameUpdatePending = true;
+  requestAnimationFrame(() => {
+    frameUpdatePending = false;
+    if (activeBook !== 'shelf' && Math.abs($('.toolbar').getBoundingClientRect().height - bookFrame.footer) > 1) render();
+  });
+}).observe($('.toolbar'));
 calendarClient = window.DayblockCalendar.createClient({
   clientId: window.DAYBLOCK_CONFIG?.googleClientId || '',
   onStatus({ phase, message }) {
     $('#calendarStatus').textContent = message;
+    $('#calendarStatus').title = message;
     $('#connectCalendar').disabled = ['loading', 'syncing', 'unconfigured', 'unavailable'].includes(phase);
     $('#connectCalendar').textContent = phase === 'connected' ? 'refresh calendar' : state.googleCalendar.updatedAt || phase === 'reconnect' ? 'reconnect Google Calendar' : 'connect Google Calendar';
     $('#disconnectCalendar').hidden = !state.googleCalendar.updatedAt;

@@ -51,7 +51,8 @@ select {
   border-bottom: 1px solid var(--line); padding: 2px 0; cursor: pointer;
 }
 select:hover { border-color: var(--ink-3); }
-[contenteditable] { outline: none; }
+/* Writing is indicated by the caret; keep focus rings on non-writing controls. */
+[contenteditable], textarea, input:not([type]), input[type="text"] { outline: none; }
 [contenteditable]:empty::before {
   content: attr(data-placeholder);
   color: var(--ink-3);
@@ -376,7 +377,7 @@ select:hover { border-color: var(--ink-3); }
 .book-tabs { display: flex; gap: 3px; margin: 0 0 0 max(0px, calc(50% - 620px)); padding-left: 26px; }
 .book-tabs button { padding: 9px 23px 8px; border: 1px solid #deded7; border-bottom: 0; border-radius: 5px 5px 0 0; background: #e9e8e1; color: var(--ink-2); font-size: 11px; letter-spacing: .08em; }
 .book-tabs button[aria-pressed="true"] { background: var(--paper); color: var(--ink); position: relative; z-index: 1; border-color: transparent; }
-button:focus-visible, [contenteditable]:focus-visible { outline: 1px solid #89877f; outline-offset: 3px; }
+button:focus-visible { outline: 1px solid #89877f; outline-offset: 3px; }
 .week-book, .month-book { display: block; width: min(1320px, 100%); }
 .wide-sheet { padding: 28px 28px 30px; }
 .sheet-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; padding-bottom: 17px; }
@@ -596,6 +597,15 @@ body[data-surface="tracker"] #toggleTools { display: none; }
 .paper-segments button { flex: 1; min-height: 34px; font-size: 11px; color: var(--ink-2); }
 .paper-segments button[aria-pressed="true"] { background: var(--hl-grey); color: var(--ink); }
 .section-segments { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
+.planner-heading { flex-shrink: 0; }
+.planner-heading .day-num { margin: 0; font: 300 27px/1 var(--font); letter-spacing: -.02em; }
+.planner-heading-context { min-width: 0; }
+.planner-heading-context .month { overflow-wrap: anywhere; }
+.week-sheet, .month-sheet { padding-top: 20px; }
+.wide-sheet > .planner-heading { margin-bottom: 12px; justify-content: flex-start; }
+.month-book { display: flex; flex-direction: column; }
+.month-book .month-sheet { height: auto; min-height: 0; flex: 1; }
+.month-book > .section-segments { border-top: 1px solid var(--line); border-bottom: 0; }
 @media (min-width: 701px) and (max-width: 900px) {
   .day-book, .journal-book { display: grid; grid-template-columns: 1fr 1fr; }
   .page-body { grid-template-columns: 1fr; overflow: auto; }
@@ -684,7 +694,7 @@ body[data-paper="page"] .month-book[data-part="1"] .month-calendar { display: no
   .week-sheet .hour-label { left: -29px; width: 25px; font-size: 8px; }
   .week-sheet .week-title { font-size: 8px; }
   .week-sheet .week-notes .notes-text { font-size: 10px; }
-  body[data-paper="spread"] .day-book { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); }
+  body[data-paper="spread"] .day-book { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr); }
   body[data-paper="spread"] .day-book .page[data-side="right"] { display: flex; }
   body[data-paper="spread"] .day-book .page { padding: 8px; }
   body[data-paper="spread"] .day-book .page-head { flex-wrap: wrap; }
@@ -708,7 +718,10 @@ body[data-paper="page"] .month-book[data-part="1"] .month-calendar { display: no
   .side { padding-top: 0; border: 0; gap: 12px; }
   .day-book[data-part="0"] .side, .day-book[data-part="1"] .timeline { display: none; }
   .week-sheet, .month-sheet { min-width: 0; flex: 1; min-height: 0; }
-  .month-sheet { padding: 12px; }
+  .month-sheet { padding: 14px; }
+  .week-sheet { padding-top: 14px; }
+  .week-sheet > .planner-heading { margin-left: 9px; margin-right: 9px; }
+  .planner-heading .day-num { font-size: 24px; }
   .month-body { display: block; }
   .month-calendar { height: 100%; }
   .month-notes { height: 100%; padding: 0; }
@@ -847,15 +860,11 @@ body[data-paper="page"] .notebook-book { grid-template-columns: minmax(0, 1fr); 
   .catchall-drawer, .planner-tools { left: 8px; right: 8px; width: auto; }
 }
 
-/* Navigation belongs to the desk's bottom bar, not on the journal paper. */
-.toolbar, .tools-open .toolbar { grid-template-rows: 36px 32px 36px; }
-.toolbar .book-navigation { grid-column: 1 / -1; grid-row: 2; width: 100%; min-height: 32px; margin: 0; gap: 12px; }
-.toolbar .book-tabs { flex-shrink: 0; }
-.toolbar .book-tabs button { border: 0; border-radius: 0; background: transparent; color: var(--ink-2); padding: 3px 10px; min-height: 30px; }
-.toolbar .book-tabs button[aria-pressed="true"] { box-shadow: inset 0 -1px var(--ink-2); color: var(--ink); }
-.toolbar .paper-controls { margin-left: auto; }
-.toolbar .paper-controls button { min-height: 30px; border-radius: 0; }
-.toolbar #paperSections:empty, .context-navigation:empty { display: none; }
+/* Layout controls stay above every book; journal navigation stays below. */
+.tracker-navigation { justify-content: flex-end; }
+body[data-surface="tracker"] .toolbar { grid-template-rows: 36px auto 36px; }
+#paperSections { grid-column: 1 / -1; grid-row: 2; min-height: 32px; }
+#paperSections:empty, .context-navigation:empty { display: none; }
 .toolbar .section-segments { border: 0; gap: 4px; }
 .toolbar .section-segments button { min-height: 30px; padding: 3px 8px; border-radius: 0; white-space: nowrap; }
 .toolbar .section-segments button[aria-pressed="true"] { background: transparent; box-shadow: inset 0 -1px var(--ink-2); }
@@ -864,16 +873,61 @@ body[data-paper="page"] .notebook-book { grid-template-columns: minmax(0, 1fr); 
 .toolbar .journal-nav button { white-space: nowrap; font-size: 12px; padding: 4px 8px; }
 .toolbar .journal-nav button:first-child { margin-right: auto; }
 .toolbar .notebook-back { min-height: 36px; }
-.toolbar .catchall-form { grid-row: 3; }
-.scene { padding-bottom: 124px; }
+body[data-surface="tracker"] .toolbar .catchall-form { grid-row: 3; }
 .reading-continuation { justify-content: flex-end; min-height: 53px; }
 @media (max-width: 700px) {
-  .scene, .margin-open .scene { padding-bottom: 124px; }
-  .toolbar .book-navigation { gap: 3px; }
-  .toolbar .book-tabs button { padding: 3px 5px; font-size: 10px; letter-spacing: 0; min-width: 0; }
   .toolbar .section-segments { gap: 0; }
   .toolbar .section-segments button { padding: 3px 5px; font-size: 10px; min-width: 0; }
-  .toolbar .paper-controls button { padding: 3px 4px; min-width: 0; }
   .toolbar .journal-nav { gap: 0; }
   .toolbar .journal-nav button { padding: 4px; min-width: 0; font-size: 11px; }
+}
+
+/* All notebooks size the paper first; stationery uses genuinely spare room. */
+body[data-surface] { --rail-width: 232px; }
+body[data-surface] .scene {
+  --paper-width: var(--book-paper-width, 100%);
+  padding-bottom: calc(var(--book-footer-height, 80px) + 12px);
+}
+body[data-surface] .day-book,
+body[data-surface] .week-book,
+body[data-surface] .month-book,
+body[data-surface] .notebook-book { height: var(--book-paper-height, calc(100dvh - 144px)); }
+body[data-surface] .journal-book { min-height: var(--book-paper-height, calc(100dvh - 144px)); }
+#toggleMargin[data-tucked="true"] { border-bottom: 1px dotted var(--ink-3); }
+.day-book .page { container-type: inline-size; }
+.day-book .page-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(132px, .8fr); overflow: visible; }
+@container (max-width: 310px) {
+  .day-book .page-body { grid-template-columns: 1fr; overflow: auto; }
+}
+.day-book .block, .week-book .block { border-radius: 0; left: 0; width: 100%; }
+.past-gap { width: 100%; z-index: 3; font-size: 11px; background: var(--desk); }
+
+/* The ellipsis reveals text controls beside it, in the existing bottom bar. */
+body[data-surface="planner"] .toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 8px; box-shadow: none; }
+body[data-surface="planner"] #backShelf { order: 0; flex: 0 0 36px; }
+body[data-surface="planner"] .toolbar > .date-controls { order: 1; flex: 0 0 auto; min-height: 36px; }
+body[data-surface="planner"] #toggleTools { order: 2; flex: 0 0 36px; }
+body[data-surface="planner"] .planner-tools {
+  position: static; display: contents; width: auto; min-width: 0;
+  padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+body[data-surface="planner"] .planner-tools > * { order: 3; }
+body[data-surface="planner"] .planner-tools > .group { min-height: 36px; }
+body[data-surface="planner"] .past-hours-control { display: flex; align-items: center; gap: 5px; min-height: 36px; white-space: nowrap; }
+.past-hours-control input { accent-color: #707a65; margin: 0; }
+.past-hours-control:has(input:disabled) { opacity: .5; }
+body[data-surface="planner"] .calendar-connection { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; width: auto; max-width: 100%; border: 0; padding: 0; }
+body[data-surface="planner"] .calendar-connection p { max-width: 230px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+body[data-surface="planner"] .calendar-connection p:empty,
+body[data-surface="planner"] .calendar-connection small:empty { display: none; }
+body[data-surface="planner"] .calendar-connection small,
+body[data-surface="planner"] .calendar-connection a { margin: 0; }
+body[data-surface="planner"] .catchall-form { order: 4; flex: 0 0 100%; min-height: 36px; }
+@media (max-width: 700px) {
+  .day-book .page-body { display: block; overflow: auto; }
+  body[data-surface="planner"] .toolbar { gap: 0 3px; }
+  body[data-surface="planner"] #backShelf,
+  body[data-surface="planner"] #toggleTools { flex-basis: 30px; }
+  body[data-surface="planner"] .toolbar > .date-controls { flex: 0 1 auto; }
+  body[data-surface="planner"] .planner-tools select { font-size: 16px; }
 }
