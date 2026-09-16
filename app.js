@@ -103,6 +103,9 @@ if (!['page', 'spread'].includes(paperPreferences.phone)) paperPreferences.phone
 paperPreferences.margin ??= true;
 state.months ||= {};
 state.trackers ||= { ideas: [], reading: [] };
+state.catchall ||= { draft: '', items: [] };
+state.googleCalendar ||= { events: [], updatedAt: null };
+let calendarClient = null;
 let activeBook = 'shelf';
 let trackerKind = 'ideas';
 let showArchived = false;
@@ -123,6 +126,9 @@ window.addEventListener('resize', () => {
 let cursor = todayKey();          // left page of the current spread
 let lastToday = todayKey();
 const fresh = new Set();          // ids of just-drawn blocks; they vanish if left untitled
+const calendarEvents = key => window.DayblockCalendar.eventsOnDate(state.googleCalendar.events, key);
+const calendarWindow = () => window.DayblockCalendar.windowFor(cursor);
+const refreshCalendar = () => calendarClient?.refresh(calendarWindow());
 
 // Unchecked todos from earlier days roll forward to today, keeping their origin.
 function carryOver() {
@@ -154,7 +160,7 @@ function layout() {
   const gaps = parts.filter(p => p[0] === 'gap').length;
   // Use the same height for every day and for all pointer/time conversions.
   // Reserve the lower part of weekly paper for each day's writing.
-  const paperHeight = Math.max(240, innerHeight - (phone.matches ? 100 : 120));
+  const paperHeight = Math.max(240, innerHeight - (phone.matches ? 132 : 144));
   const target = isWeek() ? Math.max(80, Math.min(560, paperHeight * .56, paperHeight - 250)) : Math.max(160, paperHeight - 150);
   const pph = Math.max(6, (target - gaps * GAP_H) / visible);
 
@@ -186,7 +192,7 @@ const hiddenIn = (b, L) => L.items.some(it => it.type === 'gap' && b.start >= it
 
 function positionBlock(node, start, end, L) {
   const top = timeToY(start, L);
-  const h = Math.max(timeToY(end, L) - top, 14);
+  const h = Math.max(timeToY(end, L) - top, 2);
   node.style.top = `${top}px`;
   node.style.height = `${h}px`;
   node.classList.toggle('compact', h < 30);
@@ -218,11 +224,12 @@ function lanes(blocks) {
 }
 
 /* ---------- pointer tracking (drag vs click) ---------- */
-function trackPointer(e, capEl, { move, end, click }) {
+function trackPointer(e, capEl, { move, end, click, cancel }) {
   const sx = e.clientX, sy = e.clientY;
   let moved = false;
   try { capEl.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
   const onMove = ev => {
+    if (ev.pointerId !== e.pointerId) return;
     if (!moved) {
       if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
       moved = true;
@@ -232,15 +239,18 @@ function trackPointer(e, capEl, { move, end, click }) {
     move(ev);
   };
   const onUp = ev => {
-    capEl.removeEventListener('pointermove', onMove);
-    capEl.removeEventListener('pointerup', onUp);
-    capEl.removeEventListener('pointercancel', onUp);
+    if (ev.pointerId !== e.pointerId) return;
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
+    try { capEl.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
     document.body.classList.remove('dragging');
+    if (ev.type === 'pointercancel') { cancel?.(); return; }
     if (moved) end(ev); else click?.(ev);
   };
-  capEl.addEventListener('pointermove', onMove);
-  capEl.addEventListener('pointerup', onUp);
-  capEl.addEventListener('pointercancel', onUp);
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+  document.addEventListener('pointercancel', onUp);
 }
 
 /* ---------- editable text ---------- */
@@ -317,6 +327,45 @@ function delButton(onDel) {
 /* ---------- toolbar ---------- */
 const viewSel = $('#view'), wsSel = $('#ws'), weSel = $('#we');
 
+// One unsorted inbox shared by all three notebooks; never guesses a destination.
+const catchallInput = $('#catchallInput');
+catchallInput.value = state.catchall.draft;
+catchallInput.oninput = () => { state.catchall.draft = catchallInput.value; save(); };
+function renderCatchall() {
+  const drawer = $('#catchallDrawer');
+  const count = state.catchall.items.filter(item => !item.done).length;
+  $('#toggleCatchall').textContent = count ? `catchall · ${count}` : 'catchall';
+  drawer.replaceChildren();
+  if (!state.catchall.items.length) drawer.append(el('p', { class: 'catchall-empty' }, 'A place for things that don’t have a place yet.'));
+  for (const item of [...state.catchall.items].reverse()) {
+    const row = el('div', { class: `catchall-item${item.done ? ' done' : ''}` });
+    const check = el('button', { type: 'button', class: 'check', 'aria-label': item.done ? 'Reopen catchall note' : 'Mark catchall note done', 'aria-pressed': String(item.done) }, item.done ? '×' : '');
+    check.onclick = () => { item.done = !item.done; save(); renderCatchall(); };
+    const text = el('div', { class: 'catchall-text', role: 'textbox', 'aria-label': 'Saved catchall note' }, item.text);
+    bindEditable(text, value => { item.text = value; save(); }, { multiline: true });
+    row.append(check, text); drawer.append(row);
+  }
+}
+$('#catchallForm').onsubmit = e => {
+  e.preventDefault();
+  const text = catchallInput.value.trim();
+  if (!text) return;
+  state.catchall.items.push({ id: uid(), text, done: false, createdAt: new Date().toISOString() });
+  state.catchall.draft = ''; catchallInput.value = ''; save(); renderCatchall();
+  catchallInput.focus();
+};
+$('#toggleCatchall').onclick = () => {
+  const drawer = $('#catchallDrawer');
+  drawer.hidden = !drawer.hidden;
+  $('#toggleCatchall').setAttribute('aria-expanded', String(!drawer.hidden));
+  if (!drawer.hidden) {
+    $('#plannerTools').hidden = true;
+    document.body.classList.remove('tools-open');
+    $('#toggleTools').setAttribute('aria-expanded', 'false');
+  }
+};
+renderCatchall();
+
 function renderToolbar() {
   const s = state.settings;
   document.querySelectorAll('.paper-controls [data-paper]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.paper === paperMode())));
@@ -355,7 +404,7 @@ function setMode(mode, key = cursor) {
   activeBook = 'planner';
   cursor = key;
   state.settings.mode = mode;
-  save(); render();
+  save(); render(); refreshCalendar();
 }
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
 function navigate(direction) {
@@ -363,7 +412,7 @@ function navigate(direction) {
     const d = fromKey(cursor);
     cursor = keyOf(new Date(d.getFullYear(), d.getMonth() + direction, 1));
   } else cursor = addDays(cursor, direction * (isWeek() ? 7 : singlePage() ? 1 : 2));
-  render();
+  render(); refreshCalendar();
 }
 
 viewSel.onchange = () => { state.settings.view = viewSel.value; save(); render(); };
@@ -381,7 +430,7 @@ weSel.onchange = () => {
 };
 $('#prev').onclick = () => navigate(-1);
 $('#next').onclick = () => navigate(1);
-$('#today').onclick = () => { cursor = todayKey(); render(); };
+$('#today').onclick = () => { cursor = todayKey(); render(); refreshCalendar(); };
 $('#addSticky').onclick = () => {
   paperPreferences.margin = true;
   const n = state.desk.items.filter(i => i.type === 'sticky').length;
@@ -424,6 +473,7 @@ function renderPage(pageEl, key) {
   renderTimeline(timeline, key);
 
   const side = el('div', { class: 'side' });
+  renderCalendarBanners(side, key);
   const todo = el('div', { class: 'todo-section' }, el('h3', {}, el('span', {}, 'todo')));
   renderTodos(todo, key);
   const done = el('div', { class: 'done-section' }, el('h3', {}, el('span', {}, 'deliverables')));
@@ -446,12 +496,15 @@ function renderTextField(container, cls, value, commit, placeholder) {
 /* ---------- timeline ---------- */
 function renderTimeline(container, key) {
   const d = dayData(key);
+  const imported = calendarEvents(key).filter(event => !event.allDay && event.end > DAY_START && event.start < DAY_END)
+    .map(event => ({ ...event, start: Math.max(DAY_START, event.start), end: Math.min(DAY_END, event.end) }));
+  const blocks = [...d.blocks, ...imported];
   const L = layout();
   const grid = el('div', { class: 'grid', 'data-day': key, style: `height:${L.height}px` });
 
   for (const it of L.items) {
     if (it.type === 'gap') {
-      const n = d.blocks.filter(b => hiddenIn(b, L) && b.start >= it.from && b.end <= it.to).length;
+      const n = blocks.filter(b => hiddenIn(b, L) && b.start >= it.from && b.end <= it.to).length;
       grid.append(el('div', {
         class: 'gap', style: `top:${it.y}px;height:${it.h}px`, title: 'show all hours',
       }, `${fmtRange(it.from, it.to)}${n ? ` · ${n} hidden` : ''}`));
@@ -470,11 +523,21 @@ function renderTimeline(container, key) {
   }
 
   const blocksLayer = el('div', { class: 'blocks' });
-  const ln = lanes(d.blocks);
-  for (const b of d.blocks) {
+  const ln = lanes(blocks);
+  for (const b of blocks) {
     if (hiddenIn(b, L)) continue;
     const { lane, count } = ln[b.id];
-    const node = el('div', { class: `block hl-${b.color}`, 'data-id': b.id, title: `${fmtRange(b.start, b.end)} · ${b.title}` });
+    if (b.readonly) {
+      const node = calendarButton(b, 'block calendar-block hl-blue');
+      node.style.left = `calc(${lane * 100 / count}% + 3px)`;
+      node.style.width = `calc(${100 / count}% - 7px)`;
+      positionBlock(node, b.start, b.end, L);
+      blocksLayer.append(node); continue;
+    }
+    const node = el('div', { class: `block hl-${b.color}`, 'data-id': b.id, title: `${fmtRange(b.start, b.end)} · ${b.title}`, tabindex: 0, 'aria-label': `${fmtRange(b.start, b.end)} · ${b.title || 'untitled block'}` });
+    node.addEventListener('keydown', e => {
+      if (e.target === node && ['Enter', ' '].includes(e.key)) { e.preventDefault(); openBlockEditor(key, b); }
+    });
     node.style.left = `calc(${lane * 100 / count}% + 3px)`;
     node.style.width = `calc(${100 / count}% - 7px)`;
     positionBlock(node, b.start, b.end, L);
@@ -507,7 +570,7 @@ function renderTimeline(container, key) {
     if (e.target.closest('.gap')) { state.settings.view = 'all'; save(); render(); return; }
     const block = e.target.closest('.block');
     if (block) {
-      if (isWeek()) openBlockEditor(key, d.blocks.find(b => b.id === block.dataset.id));
+      if (isWeek() || block.classList.contains('compact')) openBlockEditor(key, d.blocks.find(b => b.id === block.dataset.id));
       else focusEditable($('.block-title', block));
       return;
     }
@@ -580,7 +643,8 @@ function onGridPointerDown(e, key) {
         dayData(cur.day).blocks.push(b);
         save(); render();
       },
-      click(ev) { if (isWeek()) openBlockEditor(key, b); else focusEditable(title, ev); },
+      cancel() { render(); },
+      click(ev) { if (isWeek() || blockEl.classList.contains('compact')) openBlockEditor(key, b); else focusEditable(title, ev); },
     });
     return;
   }
@@ -605,6 +669,7 @@ function onGridPointerDown(e, key) {
       positionBlock(ghost, cur.start, cur.end, L);
     },
     end() { addBlock(key, cur.start, cur.end); },
+    cancel() { ghost?.remove(); },
     click() { addBlock(key, anchor, Math.min(anchor + .5, DAY_END)); },
   });
 }
@@ -613,7 +678,7 @@ function addBlock(key, start, end, title = '') {
   dayData(key).blocks.push(b);
   if (!title) fresh.add(b.id);
   save(); render();
-  if (!title && isWeek()) openBlockEditor(key, b);
+  if (!title && (isWeek() || (end - start) * layout().pph < 30)) openBlockEditor(key, b);
   else if (!title) {
     const t = $(`.block[data-id="${b.id}"] .block-title`);
     t && focusEditable(t);
@@ -659,6 +724,30 @@ function openBlockEditor(key, block) {
 }
 
 /* ---------- todos ---------- */
+function calendarButton(event, className = 'calendar-tag') {
+  const node = el('button', { type: 'button', class: className, title: `Google Calendar · ${event.title} · read-only`, 'aria-label': `${event.title}, Google Calendar, read-only` }, `G · ${event.title}`);
+  node.addEventListener('pointerdown', e => e.stopPropagation());
+  node.onclick = e => { e.stopPropagation(); openCalendarEvent(event.source || event); };
+  return node;
+}
+function renderCalendarBanners(container, key) {
+  const events = calendarEvents(key).filter(event => event.allDay || event.end <= DAY_START || event.start >= DAY_END);
+  if (!events.length) return;
+  const section = el('div', { class: 'calendar-banners', 'aria-label': 'Google Calendar all-day and early events' });
+  for (const event of events) section.append(calendarButton(event));
+  container.append(section);
+}
+function openCalendarEvent(event) {
+  const dialog = el('dialog', { class: 'block-editor calendar-event-dialog', 'aria-label': 'Google Calendar event' });
+  const close = el('button', { type: 'button' }, 'close');
+  close.onclick = () => dialog.close();
+  const when = event.allDay ? `${event.start} · all day` : `${new Date(event.start).toLocaleString()} – ${new Date(event.end).toLocaleString()}`;
+  dialog.append(el('h3', {}, 'Google Calendar · read-only'), el('h2', {}, event.title), el('p', {}, when));
+  if (event.url) dialog.append(el('a', { href: event.url, target: '_blank', rel: 'noopener noreferrer' }, 'open in Google Calendar'));
+  dialog.append(close); dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  document.body.append(dialog); dialog.showModal();
+}
+
 function renderTodos(container, key) {
   const d = dayData(key);
   const ul = el('ul', { class: 'todos' });
@@ -788,7 +877,7 @@ function defaultPos(type) {
   const br = book.getBoundingClientRect(), sr = scene.getBoundingClientRect();
   const x = br.right - sr.left + 12;
   const top = br.top - sr.top + 12;
-  return { sticky: { x, y: top }, tray: { x, y: top + 205 }, card: { x, y: top + 365 } }[type];
+  return { sticky: { x, y: top }, tray: { x, y: top + 205 }, card: { x, y: top + 415 } }[type];
 }
 
 // Any desk object: drag to move, click to do its own thing.
@@ -796,7 +885,7 @@ function makeDraggable(node, it, onClick) {
   node.addEventListener('pointerdown', e => {
     if (e.pointerType === 'touch') return;
     if (e.button !== 0) return;
-    if (e.target.closest('button, [contenteditable]:focus')) return;
+    if (e.target.closest('button, [contenteditable]')) return;
     e.preventDefault();
     const sx = e.clientX, sy = e.clientY, ox = parseFloat(node.style.left), oy = parseFloat(node.style.top);
     let cur = { x: ox, y: oy };
@@ -808,6 +897,7 @@ function makeDraggable(node, it, onClick) {
         node.style.left = `${cur.x}px`; node.style.top = `${cur.y}px`;
       },
       end() { it.x = cur.x; it.y = cur.y; it.docked = false; save(); },
+      cancel() { node.style.left = `${ox}px`; node.style.top = `${oy}px`; },
       click(ev) { onClick?.(ev); },
     });
   });
@@ -855,6 +945,7 @@ function renderTray(it, base) {
     const pen = el('button', {
       class: `${c === 'none' ? 'eraser' : 'pen'} hl-${c}${on ? ' on' : ''}`,
       title: c === 'none' ? 'no highlight' : c,
+      'aria-pressed': String(on),
     });
     if (c !== 'none') pen.append(el('i', { class: 'cap' }), el('i', { class: 'body' }), el('i', { class: 'tip' }));
     pen.onclick = () => { state.settings.color = c; save(); renderDesk(); };
@@ -914,6 +1005,7 @@ function renderWeek() {
     renderTimeline(timeline, key);
     if (i > 0) timeline.querySelectorAll('.hour-label').forEach(n => n.remove());
     const todos = el('section', { class: 'week-todos' }, el('h3', {}, 'to do'));
+    renderCalendarBanners(todos, key);
     renderTodos(todos, key);
     const notes = el('section', { class: 'notes week-notes' }, el('h3', {}, 'notes'));
     renderTextField(notes, 'notes-text', d.notes, v => { d.notes = v; save(); }, 'notes');
@@ -942,6 +1034,7 @@ function renderMonth() {
     cell.append(dayHeading(key));
     const entries = el('div', { class: 'month-entries' });
     if (d.title) entries.append(el('div', { class: 'month-focus' }, d.title));
+    for (const event of calendarEvents(key)) entries.append(calendarButton(event, 'month-block calendar-tag hl-blue'));
     for (const b of [...d.blocks].sort((a, b) => a.start - b.start)) {
       const entry = el('button', { class: `month-block hl-${b.color}`, title: `${fmtRange(b.start, b.end)} · ${b.title}` },
         el('span', {}, fmtHour(b.start)), b.title || 'untitled');
@@ -986,7 +1079,20 @@ $('#backShelf').onclick = () => { activeBook = 'shelf'; render(); window.scrollT
 $('#toggleTools').onclick = e => {
   const open = document.body.classList.toggle('tools-open');
   e.currentTarget.setAttribute('aria-expanded', String(open));
+  $('#plannerTools').hidden = !open;
+  if (open) {
+    $('#catchallDrawer').hidden = true;
+    $('#toggleCatchall').setAttribute('aria-expanded', 'false');
+  }
 };
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  $('#catchallDrawer').hidden = true;
+  $('#toggleCatchall').setAttribute('aria-expanded', 'false');
+  $('#plannerTools').hidden = true;
+  document.body.classList.remove('tools-open');
+  $('#toggleTools').setAttribute('aria-expanded', 'false');
+});
 
 function renderShelf() {
   const shelf = $('#shelf');
@@ -1140,6 +1246,7 @@ function render() {
   document.body.classList.toggle('margin-open', !shelfOpen && marginVisible());
   $('.book-navigation').classList.toggle('tracker-navigation', !plannerOpen);
   document.querySelectorAll('.toolbar > .group, .toolbar > .spacer').forEach(n => n.hidden = !plannerOpen);
+  $('#plannerTools').hidden = !plannerOpen || !document.body.classList.contains('tools-open');
   if (shelfOpen) { renderShelf(); return; }
   renderToolbar();
   if (!plannerOpen) viewSel.closest('.group').hidden = true;
@@ -1177,4 +1284,32 @@ function render() {
 
 carryOver();
 render();
+calendarClient = window.DayblockCalendar.createClient({
+  clientId: window.DAYBLOCK_CONFIG?.googleClientId || '',
+  onStatus({ phase, message }) {
+    $('#calendarStatus').textContent = message;
+    $('#connectCalendar').disabled = ['loading', 'syncing', 'unconfigured', 'unavailable'].includes(phase);
+    $('#connectCalendar').textContent = phase === 'connected' ? 'refresh calendar' : state.googleCalendar.updatedAt || phase === 'reconnect' ? 'reconnect Google Calendar' : 'connect Google Calendar';
+    $('#disconnectCalendar').hidden = !state.googleCalendar.updatedAt;
+    $('#calendarSetup').hidden = phase !== 'unconfigured';
+    $('#calendarUpdated').textContent = state.googleCalendar.updatedAt ? `Last imported ${new Date(state.googleCalendar.updatedAt).toLocaleString()}. Cached on this browser.` : '';
+  },
+  onEvents(data) {
+    state.googleCalendar = data; save();
+    const focused = document.activeElement;
+    if (focused?.isContentEditable && book.contains(focused)) focused.addEventListener('blur', () => setTimeout(render, 0), { once: true });
+    else render();
+  },
+});
+$('#connectCalendar').onclick = () => {
+  if (calendarClient.validToken()) calendarClient.refresh(calendarWindow(), true);
+  else calendarClient.connect(calendarWindow());
+};
+$('#disconnectCalendar').onclick = () => {
+  state.googleCalendar = { events: [], updatedAt: null }; save();
+  calendarClient.disconnect(); render();
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCalendar(); });
+window.addEventListener('pageshow', refreshCalendar);
+calendarClient.prepare();
 })();

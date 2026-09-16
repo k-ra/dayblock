@@ -100,7 +100,7 @@ select:hover { border-color: var(--ink-3); }
 }
 .book::before {
   content: ''; position: absolute; top: 0; bottom: 0; left: 50%;
-  width: 1px; background: rgba(0, 0, 0, .08);
+  width: 1px; background: rgba(0, 0, 0, .08); pointer-events: none;
 }
 .page {
   padding: 28px 30px 30px;
@@ -140,7 +140,8 @@ select:hover { border-color: var(--ink-3); }
   cursor: pointer;
 }
 .gap:hover { color: var(--ink-2); }
-.blocks { position: absolute; inset: 0; }
+.blocks { position: absolute; inset: 0; pointer-events: none; }
+.blocks .block { pointer-events: auto; }
 .past-shade {
   position: absolute; left: -40px; right: 0; top: 0;
   background: rgba(243, 242, 238, .55);
@@ -177,6 +178,8 @@ select:hover { border-color: var(--ink-3); }
 .block .swatch-btn { right: 21px; top: 4px; }
 .block:hover .del, .block:hover .swatch-btn { opacity: .75; }
 .block-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: ns-resize; }
+.block.compact .block-resize { display: none; }
+.block:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
 
 .del {
   width: 14px; height: 14px; border-radius: 3px;
@@ -284,7 +287,7 @@ select:hover { border-color: var(--ink-3); }
   content: ''; position: absolute; top: 0; left: 0; right: 0; height: 20px;
   background: rgba(0, 0, 0, .035);
 }
-.sticky-text { min-height: 130px; white-space: pre-wrap; word-break: break-word; }
+.sticky-text { min-height: 130px; max-height: 144px; overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; word-break: break-word; cursor: text; }
 .sticky .del, .sticky .swatch-btn { position: absolute; top: 4px; opacity: 0; }
 .sticky .del { right: 6px; }
 .sticky .swatch-btn { right: 26px; }
@@ -298,17 +301,21 @@ select:hover { border-color: var(--ink-3); }
   transform: rotate(var(--rot, 1deg));
   pointer-events: auto; cursor: grab; touch-action: none;
 }
-.pens { display: flex; flex-direction: column; gap: 4px; }
-.pen, .eraser { display: flex; height: 8px; padding: 0; transition: transform .15s; }
-.pen:hover, .eraser:hover { transform: translateX(6px); }
-.pen.on, .eraser.on { transform: translateX(14px); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .18)); }
+.pens { display: flex; flex-direction: column; gap: 0; }
+.pen, .eraser { display: flex; align-items: center; height: 18px; padding: 0; }
+.pen { padding-right: 14px; }
+.pen > i { height: 8px; pointer-events: none; transition: transform .15s; }
+.pen:hover > i { transform: translateX(6px); }
+.pen.on > i { transform: translateX(14px); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .18)); }
+.pen:focus-visible, .eraser:focus-visible { outline: 1px solid var(--ink-2); outline-offset: 1px; }
 .pen .cap  { width: 34px; background: var(--pc); border-radius: 4px 1px 1px 4px; }
 .pen .body { flex: 1; background: #fff; border-top: 1px solid rgba(0, 0, 0, .05); border-bottom: 1px solid rgba(0, 0, 0, .10); }
 .pen .tip  { width: 16px; background: var(--pc); border-radius: 1px 4px 4px 1px; }
 .eraser {
-  width: 46px; height: 9px; margin-top: 2px; border-radius: 2px;
-  background: linear-gradient(#fff, #f1efea); border: 1px solid rgba(0, 0, 0, .12);
+  width: 60px; border-radius: 2px;
 }
+.eraser::before { content: ''; width: 46px; height: 9px; background: linear-gradient(#fff, #f1efea); border: 1px solid rgba(0, 0, 0, .12); border-radius: 2px; }
+.eraser.on::before { box-shadow: 0 0 0 1px var(--ink-2); }
 
 /* weekly index card */
 .card {
@@ -582,7 +589,7 @@ body { display: flex; flex-direction: column; }
 .book-stack { width: min(780px, 88vw); margin: 0; padding: 0 0 25px; }
 .stack-volume { min-height: 0; height: clamp(54px, 10dvh, 80px); padding: 0 32px; }
 .stack-volume .volume-label strong { font-size: clamp(17px, 2vw, 24px); }
-.scene { order: 1; padding: 12px 20px 68px; }
+.scene { order: 1; padding: 12px 20px 92px; }
 .toolbar { order: 2; position: fixed; bottom: 0; top: auto; left: 0; right: 0; min-height: 48px; padding: 4px 16px; gap: 6px 12px; z-index: 30; }
 .toolbar > .group { display: none; }
 .toolbar > .group:first-of-type { display: flex; }
@@ -598,7 +605,7 @@ body[data-surface="tracker"] #toggleTools { display: none; }
 .book-tabs { margin: 0 auto; max-width: 1180px; padding-left: 12px; }
 .book-tabs button { min-height: 30px; padding: 6px 18px; }
 .book .page { min-height: 0; padding: 20px; gap: 12px; }
-.day-book, .week-book, .month-book { height: calc(100dvh - 120px); }
+.day-book, .week-book, .month-book { height: calc(100dvh - 144px); }
 .day-book .page { min-width: 0; overflow: auto; }
 .page-body { grid-template-columns: minmax(0, 1fr) minmax(140px, .8fr); gap: 16px; min-height: 0; }
 .page-head { flex-wrap: nowrap; }
@@ -620,8 +627,8 @@ body[data-surface="tracker"] #toggleTools { display: none; }
 .month-notes { overflow: auto; }
 .stationery { display: none; }
 .tools-open .stationery { display: block; }
-.tracker-sheet { min-height: calc(100dvh - 90px); }
-.journal-book { min-height: calc(100dvh - 90px); }
+.tracker-sheet { min-height: calc(100dvh - 144px); }
+.journal-book { min-height: calc(100dvh - 144px); }
 .journal-book .page { min-height: 0; }
 .journal-writing { min-height: 100px; }
 .first-impressions .journal-writing { min-height: 60px; }
@@ -637,8 +644,10 @@ body[data-surface="tracker"] #toggleTools { display: none; }
 }
 
 /* Page/spread is independent of the calendar period. */
-body { --paper-width: 1180px; --rail-width: clamp(100px, 20vw, 232px); }
-body[data-paper="page"] { --paper-width: 680px; }
+body { --rail-width: clamp(100px, 20vw, 232px); }
+.scene { --spread-width: min(1180px, calc(100vw - 40px)); --paper-width: var(--spread-width); }
+.margin-open .scene { --spread-width: min(1180px, calc(100vw - 48px - var(--rail-width))); }
+body[data-paper="page"] .scene { --paper-width: calc(var(--spread-width) / 2); }
 /* A little unruled paper below the month grid, without another writing section. */
 @media (min-width: 701px) {
   .month-sheet { padding-bottom: 40px; }
@@ -724,14 +733,15 @@ body[data-paper="page"] .month-book[data-part="1"] .month-calendar { display: no
   body[data-paper="spread"] .day-book .page-title { flex-basis: 100%; }
 }
 @media (max-width: 700px) {
-  .scene { padding: 8px 8px 58px; }
+  .scene { padding: 8px 8px 90px; }
+  body[data-paper] .scene { --paper-width: 100%; }
   .toolbar { padding: 3px 8px; flex-wrap: nowrap; gap: 3px; }
   .toolbar > .group:first-of-type { flex: 1; gap: 1px; flex-wrap: nowrap; justify-content: space-between; }
   .toolbar .range { flex-basis: auto; margin: 0; font-size: 9px; }
   .toolbar button { min-width: 30px; }
   .tools-open .toolbar { flex-wrap: wrap; }
   .tools-open .toolbar > .group:first-of-type { flex-basis: 70%; }
-  .day-book, .week-book, .month-book { height: calc(100dvh - 100px); min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .day-book, .week-book, .month-book { height: calc(100dvh - 132px); min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
   .day-book .page[data-side="right"] { display: none; }
   .day-book .page[data-side="left"] { flex: 1; min-height: 0; padding: 14px; }
   .page-head { gap: 8px; flex-wrap: nowrap; }
@@ -749,7 +759,7 @@ body[data-paper="page"] .month-book[data-part="1"] .month-calendar { display: no
   .month-cell .date-heading { min-height: 27px; height: 27px; padding: 2px 4px; }
   .month-block, .month-todo, .month-day-note { font-size: 9px; min-height: 24px; padding: 1px; }
   .month-block span { font-size: 7px; }
-  .journal-book { display: flex; flex-direction: column; min-height: calc(100dvh - 72px); }
+  .journal-book { display: flex; flex-direction: column; min-height: calc(100dvh - 132px); }
   .journal-nav { order: 3; padding: 4px 8px; }
   .journal-book[data-part="0"] .journal-right, .journal-book[data-part="1"] .journal-left { display: none; }
   .journal-book .page { padding: 14px; }
@@ -761,7 +771,50 @@ body[data-paper="page"] .month-book[data-part="1"] .month-calendar { display: no
   .journal-section .journal-writing { min-height: 96px; }
   .first-impressions .journal-writing { min-height: 48px; }
   .journal-verdicts button { min-height: 30px; }
-  .tracker-sheet { padding: 14px; min-height: calc(100dvh - 76px); }
+  .tracker-sheet { padding: 14px; min-height: calc(100dvh - 132px); }
   .tracker-tabs { margin-bottom: 10px; }
   .tracker-empty { padding-bottom: 40px; }
+}
+
+/* A stationary bottom edge: shared catchall, navigation, then tools at the right. */
+.toolbar, .tools-open .toolbar { display: grid; grid-template-columns: 36px minmax(0, 1fr) 36px; grid-template-rows: 36px 36px; gap: 0 8px; padding: 4px 16px; }
+#backShelf { grid-column: 1; grid-row: 1; }
+.toolbar > .date-controls { grid-column: 2; grid-row: 1; justify-content: flex-start; gap: 6px; min-width: 0; }
+#toggleTools { grid-column: 3; grid-row: 1; height: 36px; line-height: 1; padding: 0; }
+.planner-tools { position: absolute; bottom: calc(100% + 6px); right: 16px; display: flex; flex-wrap: wrap; gap: 12px; width: min(420px, calc(100vw - 32px)); padding: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 30px #0002; }
+.planner-tools .group { flex-wrap: wrap; }
+.calendar-connection { width: 100%; border-top: 1px solid var(--line); padding-top: 8px; }
+.calendar-connection > div { display: flex; justify-content: space-between; gap: 8px; }
+.calendar-connection p { font-size: 11px; margin: 4px 8px; }
+.calendar-connection small, .calendar-connection a { display: block; margin: 4px 8px; color: var(--ink-2); font-size: 10px; }
+.calendar-connection button:disabled { cursor: default; opacity: .6; }
+.calendar-block { cursor: pointer; text-align: left; padding: 3px 6px; border-left: 2px solid #93b7ec; white-space: nowrap; text-overflow: ellipsis; }
+.calendar-banners { display: grid; gap: 3px; }
+.calendar-tag { display: block; min-width: 0; width: 100%; padding: 3px; background: var(--hl-blue); border-radius: 2px; font-size: 10px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.calendar-event-dialog h2 { font-size: 20px; font-weight: 400; overflow-wrap: anywhere; }
+.calendar-event-dialog p, .calendar-event-dialog a { display: block; font-size: 13px; line-height: 1.6; }
+.calendar-event-dialog > button { display: block; margin: 18px 0 0 auto; min-height: 36px; }
+.catchall-form { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; gap: 10px; border-top: 1px solid #deddd7; min-width: 0; }
+.catchall-form button { font-size: 11px; flex-shrink: 0; }
+.catchall-form input { flex: 1; min-width: 0; border: 0; background: transparent; font: 13px var(--font); color: var(--ink); padding: 6px 0; outline: none; }
+.catchall-form input:focus { box-shadow: inset 0 -1px var(--ink-3); }
+.catchall-form input::placeholder { color: var(--ink-3); }
+.catchall-drawer { position: absolute; bottom: calc(100% + 6px); left: 16px; width: min(560px, calc(100vw - 32px)); max-height: min(320px, 50dvh); overflow-y: auto; overscroll-behavior: contain; padding: 16px; border: 1px solid var(--line); background: var(--paper); border-radius: 5px; box-shadow: 0 8px 30px #0002; }
+.catchall-empty { margin: 0; font-size: 12px; color: var(--ink-2); }
+.catchall-item { display: flex; gap: 8px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.catchall-item .check { width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 0; }
+.catchall-text { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 24px; }
+.catchall-item.done .catchall-text { color: var(--ink-3); text-decoration: line-through; }
+@media (min-width: 701px) and (max-width: 1000px) {
+  body[data-paper="page"] .book-navigation .book-tabs button { font-size: 10px; padding: 5px 6px; }
+  body[data-paper="page"] .paper-controls button { font-size: 10px; padding: 3px 4px; }
+  body[data-paper="page"] #toggleMargin { margin-left: 2px; }
+}
+@media (max-width: 700px) {
+  .toolbar, .tools-open .toolbar { padding: 4px 8px; gap: 0 3px; grid-template-columns: 30px minmax(0, 1fr) 30px; }
+  .toolbar > .date-controls { gap: 0; }
+  .toolbar .range { margin-left: auto; font-size: 9px; }
+  .catchall-form { gap: 4px; }
+  .catchall-form input { font-size: 16px; }
+  .catchall-drawer, .planner-tools { left: 8px; right: 8px; width: auto; }
 }

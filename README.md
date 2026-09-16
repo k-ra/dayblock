@@ -26,6 +26,10 @@ under the ellipsis button.
 - Roll unfinished todos forward automatically while preserving their origin.
 - Record daily deliverables and free-form notes.
 - Track weekly habits and current streaks.
+- Keep one shared catchall at the bottom of every notebook. Drafts and saved
+  notes persist; mark an item done or reopen it without deleting it.
+- Import a primary Google calendar read-only after the app's one-time OAuth
+  configuration. See [Google Calendar setup](GOOGLE-CALENDAR.md).
 - Switch among all hours, work hours, and off hours without deleting hidden
   events.
 - Toggle a desktop stationery margin for highlighters, an index card, and
@@ -55,8 +59,10 @@ the browser treats it like an ordinary website.
 
 ## Privacy and storage
 
-Dayblock has no account, server, analytics, or database. Planner content is saved
-to this browser's `localStorage`; it never leaves the device through the app.
+Dayblock has no planner account, server, analytics, or database. Planner content
+is saved to this browser's `localStorage`; it is not uploaded by the app.
+The optional Google connection reads the visitor's own calendar and caches its
+events separately in that browser. Authorization tokens stay in memory only.
 Clearing browser storage will erase it, so this early release should not be the
 only copy of anything important.
 
@@ -65,16 +71,23 @@ only copy of anything important.
 ```text
 index.html   page structure and controls
 styles.css   book, paper, stationery, and responsive layout
-app.js       planner state, interactions, parsing, and local persistence
+app.js       planner state, interactions, and local persistence
+favicon.svg  the little notebook site icon
+calendar-config.js  public app OAuth client ID (no secret)
+google-calendar.js  read-only import and authorization
 ```
 
-The only network request is for IBM Plex Sans and IBM Plex Mono from Google
-Fonts. System-font fallbacks are used when offline.
+The site loads IBM Plex Sans and IBM Plex Mono from Google Fonts, with system
+fallbacks offline. When a Google client ID is configured, it also loads Google's
+authorization library. Calendar API requests run only after authorization.
 
 ## Status
 
-The per-day quick-entry line is paused. A shared entry line across the three
-notebooks is a future idea, not part of the current interface.
+The per-day magic entry line is removed. The bottom catchall is deliberately
+unsorted and shared; it does not guess times or route text into other notebooks.
+
+Run `TZ=America/Los_Angeles node --test tests/google-calendar.test.cjs` for the
+synthetic Calendar import tests. Live Google sign-in still needs OAuth setup.
 
 The core planner is usable today. Export/import, accessibility review, automated
 interaction tests, and stronger mobile behavior would make sensible next

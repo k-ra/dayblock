@@ -4,23 +4,31 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dayblock</title>
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<meta name="theme-color" content="#f3f2ee">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=desk-6">
+<link rel="stylesheet" href="./styles.css?v=details-7">
 </head>
 <body>
 
 <header class="toolbar">
+  <form id="catchallForm" class="catchall-form" autocomplete="off">
+    <button type="button" id="toggleCatchall" aria-expanded="false" aria-controls="catchallDrawer">catchall</button>
+    <input id="catchallInput" aria-label="Catchall note" placeholder="leave it here…">
+    <button type="submit" aria-label="Save to catchall" title="Save to catchall">↵</button>
+  </form>
+  <section id="catchallDrawer" class="catchall-drawer" aria-label="Shared catchall" hidden></section>
   <button id="backShelf" aria-label="Bookshelf" title="Bookshelf">⌂</button>
-  <button id="toggleTools" aria-label="Planner settings" aria-expanded="false">⋯</button>
-  <div class="group">
+  <div class="group date-controls">
     <button id="prev" title="previous spread (←)">‹</button>
     <button id="today">today</button>
     <button id="next" title="next spread (→)">›</button>
     <span id="range" class="range"></span>
   </div>
 
+  <div id="plannerTools" class="planner-tools" hidden>
   <div class="group">
     <label>show
       <select id="view">
@@ -36,12 +44,17 @@
     </label>
   </div>
 
-  <div class="spacer"></div>
-
   <div class="group">
-    <span class="hint">/ to type a block or todo</span>
     <button id="addSticky">+ sticky note</button>
   </div>
+  <section class="calendar-connection" aria-label="Google Calendar connection">
+    <div><button id="connectCalendar" type="button">connect Google Calendar</button><button id="disconnectCalendar" type="button" hidden>disconnect</button></div>
+    <p id="calendarStatus" role="status">Your primary calendar · read-only</p>
+    <small id="calendarUpdated"></small>
+    <a id="calendarSetup" href="https://github.com/k-ra/dayblock/blob/main/GOOGLE-CALENDAR.md" target="_blank" rel="noopener noreferrer" hidden>app setup</a>
+  </section>
+  </div>
+  <button id="toggleTools" aria-label="Planner settings" aria-expanded="false" aria-controls="plannerTools">⋯</button>
 </header>
 
 <section id="shelf" class="shelf" aria-label="Bookshelf"></section>
@@ -65,6 +78,8 @@
 
 <div class="popover" id="popover"></div>
 
-<script src="./app.js?v=desk-6"></script>
+<script src="./calendar-config.js?v=details-7"></script>
+<script src="./google-calendar.js?v=details-7"></script>
+<script src="./app.js?v=details-7"></script>
 </body>
 </html>
