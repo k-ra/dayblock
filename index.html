@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=paper-8">
+<link rel="stylesheet" href="./styles.css?v=journal-9">
 </head>
 <body>
 
@@ -54,20 +54,22 @@
     <a id="calendarSetup" href="https://github.com/k-ra/dayblock/blob/main/GOOGLE-CALENDAR.md" target="_blank" rel="noopener noreferrer" hidden>app setup</a>
   </section>
   </div>
+  <div id="contextNavigation" class="context-navigation"></div>
+  <div class="book-navigation">
+    <nav class="book-tabs" aria-label="Planner view">
+      <button data-mode="day">day</button><button data-mode="week">week</button><button data-mode="month">month</button>
+    </nav>
+    <div id="paperSections"></div>
+    <nav class="paper-controls" aria-label="Paper layout">
+      <button data-paper="page">page</button><button data-paper="spread">spread</button>
+      <button id="toggleMargin" aria-pressed="false">margin</button>
+    </nav>
+  </div>
   <button id="toggleTools" aria-label="Planner settings" aria-expanded="false" aria-controls="plannerTools">⋯</button>
 </header>
 
 <section id="shelf" class="shelf" aria-label="Bookshelf"></section>
 <main class="scene" id="scene">
-  <div class="book-navigation">
-  <nav class="book-tabs" aria-label="Planner view">
-    <button data-mode="day">day</button><button data-mode="week">week</button><button data-mode="month">month</button>
-  </nav>
-  <nav class="paper-controls" aria-label="Paper layout">
-    <button data-paper="page">page</button><button data-paper="spread">spread</button>
-    <button id="toggleMargin" aria-pressed="false">margin</button>
-  </nav>
-  </div>
   <p class="mobile-sheet-hint" id="mobileSheetHint" hidden>Swipe across the paper to see the rest →</p>
   <div class="book" id="book" tabindex="0" aria-label="Open notebook">
     <section class="page" data-side="left"></section>
@@ -78,8 +80,8 @@
 
 <div class="popover" id="popover"></div>
 
-<script src="./calendar-config.js?v=paper-8"></script>
-<script src="./google-calendar.js?v=paper-8"></script>
-<script src="./app.js?v=paper-8"></script>
+<script src="./calendar-config.js?v=journal-9"></script>
+<script src="./google-calendar.js?v=journal-9"></script>
+<script src="./app.js?v=journal-9"></script>
 </body>
 </html>

@@ -684,7 +684,7 @@ body[data-paper="page"] .month-book[data-part="1"] .month-calendar { display: no
   .week-sheet .hour-label { left: -29px; width: 25px; font-size: 8px; }
   .week-sheet .week-title { font-size: 8px; }
   .week-sheet .week-notes .notes-text { font-size: 10px; }
-  body[data-paper="spread"] .day-book { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  body[data-paper="spread"] .day-book { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); }
   body[data-paper="spread"] .day-book .page[data-side="right"] { display: flex; }
   body[data-paper="spread"] .day-book .page { padding: 8px; }
   body[data-paper="spread"] .day-book .page-head { flex-wrap: wrap; }
@@ -784,7 +784,7 @@ body[data-paper="page"] .book::before {
   display: block; left: 0; width: 22px; transform: none;
   background: linear-gradient(90deg, #746c5b23, #746c5b0b 35%, transparent);
 }
-.journal-book::before { top: 60px; }
+.journal-book::before { top: 0; }
 body[data-paper="page"] .journal-book::before { top: 0; }
 
 /* Notebook indexes are facing pages, not full-width dashboard tables. */
@@ -845,4 +845,35 @@ body[data-paper="page"] .notebook-book { grid-template-columns: minmax(0, 1fr); 
   .catchall-form { gap: 4px; }
   .catchall-form input { font-size: 16px; }
   .catchall-drawer, .planner-tools { left: 8px; right: 8px; width: auto; }
+}
+
+/* Navigation belongs to the desk's bottom bar, not on the journal paper. */
+.toolbar, .tools-open .toolbar { grid-template-rows: 36px 32px 36px; }
+.toolbar .book-navigation { grid-column: 1 / -1; grid-row: 2; width: 100%; min-height: 32px; margin: 0; gap: 12px; }
+.toolbar .book-tabs { flex-shrink: 0; }
+.toolbar .book-tabs button { border: 0; border-radius: 0; background: transparent; color: var(--ink-2); padding: 3px 10px; min-height: 30px; }
+.toolbar .book-tabs button[aria-pressed="true"] { box-shadow: inset 0 -1px var(--ink-2); color: var(--ink); }
+.toolbar .paper-controls { margin-left: auto; }
+.toolbar .paper-controls button { min-height: 30px; border-radius: 0; }
+.toolbar #paperSections:empty, .context-navigation:empty { display: none; }
+.toolbar .section-segments { border: 0; gap: 4px; }
+.toolbar .section-segments button { min-height: 30px; padding: 3px 8px; border-radius: 0; white-space: nowrap; }
+.toolbar .section-segments button[aria-pressed="true"] { background: transparent; box-shadow: inset 0 -1px var(--ink-2); }
+.context-navigation { grid-column: 2 / -1; grid-row: 1; min-width: 0; }
+.toolbar .journal-nav { padding: 0; margin: 0; gap: 6px; border: 0; background: transparent; }
+.toolbar .journal-nav button { white-space: nowrap; font-size: 12px; padding: 4px 8px; }
+.toolbar .journal-nav button:first-child { margin-right: auto; }
+.toolbar .notebook-back { min-height: 36px; }
+.toolbar .catchall-form { grid-row: 3; }
+.scene { padding-bottom: 124px; }
+.reading-continuation { justify-content: flex-end; min-height: 53px; }
+@media (max-width: 700px) {
+  .scene, .margin-open .scene { padding-bottom: 124px; }
+  .toolbar .book-navigation { gap: 3px; }
+  .toolbar .book-tabs button { padding: 3px 5px; font-size: 10px; letter-spacing: 0; min-width: 0; }
+  .toolbar .section-segments { gap: 0; }
+  .toolbar .section-segments button { padding: 3px 5px; font-size: 10px; min-width: 0; }
+  .toolbar .paper-controls button { padding: 3px 4px; min-width: 0; }
+  .toolbar .journal-nav { gap: 0; }
+  .toolbar .journal-nav button { padding: 4px; min-width: 0; font-size: 11px; }
 }

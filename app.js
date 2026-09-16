@@ -1116,6 +1116,7 @@ function renderShelf() {
 }
 
 function renderTracker() {
+  if (trackerKind === 'reading') { renderReadingIndex(); return; }
   const reading = trackerKind === 'reading';
   const rows = state.trackers[trackerKind];
   const statuses = reading ? ['want to read', 'reading', 'finished', 'set aside'] : ['captured', 'exploring', 'making', 'done'];
@@ -1178,8 +1179,7 @@ function renderTracker() {
   const editorHead = el('header', { class: 'notebook-editor-heading' });
   const back = el('button', { class: 'notebook-back' }, `← ${title.toLowerCase()} index`);
   back.onclick = () => { notebookDetail = false; render(); };
-  if (singlePage()) editorHead.append(back);
-  else editorHead.append(el('span', { class: 'notebook-folio' }, String(Math.max(0, visible.indexOf(item)) + 1).padStart(2, '0')));
+  if (!singlePage()) editorHead.append(el('span', { class: 'notebook-folio' }, String(Math.max(0, visible.indexOf(item)) + 1).padStart(2, '0')));
   const archiveEntry = el('button', { class: 'notebook-archive' }, showArchived ? 'Restore' : 'Archive');
   archiveEntry.onclick = () => {
     if (!rows.includes(item)) return;
@@ -1215,7 +1215,51 @@ function renderTracker() {
     // remains possible after the first keystroke has saved an entry.
     const showWriting = notebookDetail === true || (notebookDetail === null && !visible.length && !showArchived);
     book.append(showWriting ? writing : index);
+    if (showWriting) $('#contextNavigation').append(back);
   } else book.append(index, writing);
+}
+
+function renderReadingIndex() {
+  const rows = state.trackers.reading;
+  const visible = rows.filter(item => !!item.archived === showArchived);
+  const left = el('section', { class: 'page notebook-index', 'data-side': 'left', 'aria-label': 'Reading index' });
+  const right = el('section', { class: 'page notebook-index', 'data-side': 'right', 'aria-label': 'Reading index continued' });
+  const openJournal = item => {
+    notebookSelection.reading = item.id; journalId = item.id; paperPart = 0;
+    render(); window.scrollTo(0, 0);
+  };
+  const add = el('button', { class: 'notebook-add' }, '+ Add book');
+  add.onclick = () => {
+    // A book opens directly into the journal the user designed, never into a
+    // second, generic editor. Do not reuse a book that already has reflections.
+    const keys = ['title', 'detail', 'notes', 'firstImpressions', 'summary', 'takeaways', 'finalThoughts', 'started', 'date'];
+    let item = rows.find(x => !x.archived && keys.every(key => !x[key]) && !x.liked && x.recommend == null && x.reread == null);
+    if (!item) {
+      item = { id: uid(), title: '', detail: '', notes: '', status: 'want to read', date: '' };
+      rows.push(item);
+    }
+    showArchived = false; save(); openJournal(item);
+    $('.journal-title').focus();
+  };
+  left.append(el('header', { class: 'notebook-heading' }, el('h1', {}, 'Reading'), add));
+  right.append(el('header', { class: 'notebook-heading reading-continuation', 'aria-hidden': 'true' }, el('span', { class: 'notebook-folio' }, '02')));
+  const firstList = el('div', { class: 'notebook-list' });
+  const secondList = el('div', { class: 'notebook-list' });
+  const split = singlePage() ? visible.length : Math.ceil(visible.length / 2);
+  if (!visible.length) firstList.append(el('p', { class: 'notebook-empty' }, showArchived ? 'Nothing archived.' : 'No books yet.'));
+  visible.forEach((item, i) => {
+    const row = el('button', { class: 'notebook-index-entry', 'data-entry': item.id },
+      el('span', { class: 'notebook-index-title' }, `${item.liked ? '♥ ' : ''}${item.title || 'Untitled book'}`),
+      el('span', { class: 'notebook-index-meta' }, [item.detail, item.status, item.date && shortDate(item.date)].filter(Boolean).join(' · ')));
+    row.onclick = () => openJournal(item);
+    (i < split ? firstList : secondList).append(row);
+  });
+  const archive = el('button', { class: 'notebook-archive', 'aria-pressed': String(showArchived) }, showArchived ? '← Current entries' : 'Archived');
+  archive.onclick = () => { showArchived = !showArchived; render(); };
+  left.append(firstList, archive); right.append(secondList);
+  book.className = 'book notebook-book reading-book';
+  book.append(left);
+  if (!singlePage()) book.append(right);
 }
 
 function renderJournal() {
@@ -1223,7 +1267,7 @@ function renderJournal() {
   if (!item) { journalId = null; renderTracker(); return; }
   const navigation = el('nav', { class: 'journal-nav', 'aria-label': 'Book journal navigation' });
   const back = el('button', {}, '← reading index');
-  back.onclick = () => { journalId = null; render(); };
+  back.onclick = () => { journalId = null; showArchived = !!item.archived; render(); };
   navigation.append(back);
   const siblings = state.trackers.reading.filter(x => !!x.archived === !!item.archived);
   const index = siblings.indexOf(item);
@@ -1232,6 +1276,9 @@ function renderJournal() {
     button.onclick = () => { journalId = siblings[index + step].id; render(); window.scrollTo(0, 0); };
     navigation.append(button);
   }
+  const archive = el('button', {}, item.archived ? 'Restore' : 'Archive');
+  archive.onclick = () => { item.archived = !item.archived; showArchived = !item.archived; journalId = null; save(); render(); };
+  navigation.append(archive);
   const field = (key, label, className = '') => {
     const node = el('div', { class: `journal-writing ${className}`, role: 'textbox', 'aria-label': label, 'aria-multiline': 'true', 'data-placeholder': label }, item[key] || '');
     bindEditable(node, v => { item[key] = v; save(); }, { multiline: true });
@@ -1269,12 +1316,15 @@ function renderJournal() {
   left.append(details, section('firstImpressions', 'first impressions', 'first-impressions'), section('summary', 'summary'), section('takeaways', 'takeaways'));
   right.append(section('finalThoughts', 'final thoughts', 'final-thoughts'), section('notes', 'notes', 'long-notes'));
   book.className = 'book journal-book';
-  book.append(navigation, left, right);
+  $('#contextNavigation').append(navigation);
+  book.append(left, right);
 }
 
 /* ---------- render all ---------- */
 function render() {
   closePopover();
+  $('#contextNavigation').replaceChildren();
+  $('#paperSections').replaceChildren();
   const shelfOpen = activeBook === 'shelf', plannerOpen = activeBook === 'planner';
   $('#shelf').hidden = !shelfOpen;
   scene.hidden = shelfOpen;
@@ -1316,7 +1366,7 @@ function render() {
         button.onclick = () => { paperPart = i; render(); };
         segments.append(button);
       });
-      book.prepend(segments);
+      $('#paperSections').append(segments);
       book.dataset.part = String(paperPart);
     }
   }
