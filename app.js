@@ -110,6 +110,8 @@ let activeBook = 'shelf';
 let trackerKind = 'ideas';
 let showArchived = false;
 let journalId = null;
+const notebookSelection = { ideas: null, reading: null };
+let notebookDetail = null;
 const phone = matchMedia('(max-width: 700px)');
 const paperMode = () => paperPreferences[phone.matches ? 'phone' : 'desktop'];
 const singlePage = () => paperMode() === 'page';
@@ -1067,6 +1069,7 @@ function renderMonth() {
 
 /* ---------- the stack and its tracking notebooks ---------- */
 function openBook(kind) {
+  notebookDetail = null;
   paperPart = 0;
   journalId = null;
   activeBook = kind === 'planner' ? 'planner' : 'tracker';
@@ -1116,66 +1119,103 @@ function renderTracker() {
   const reading = trackerKind === 'reading';
   const rows = state.trackers[trackerKind];
   const statuses = reading ? ['want to read', 'reading', 'finished', 'set aside'] : ['captured', 'exploring', 'making', 'done'];
-  const sheet = el('section', { class: `wide-sheet tracker-sheet ${reading ? 'reading-sheet' : 'ideas-sheet'}`, 'aria-label': reading ? 'Reading tracker' : 'Ideas tracker' });
-  const tabs = el('nav', { class: 'tracker-tabs', 'aria-label': 'Tracker section' });
-  for (const [kind, label] of [['ideas', 'ideas'], ['reading', 'reading']]) {
-    const button = el('button', { 'aria-pressed': String(trackerKind === kind) }, label);
-    button.onclick = () => { trackerKind = kind; showArchived = false; render(); };
-    tabs.append(button);
-  }
   const visible = rows.filter(x => !!x.archived === showArchived);
-  const completed = rows.filter(x => !x.archived && x.status === (reading ? 'finished' : 'done')).length;
-  sheet.append(tabs, el('header', { class: 'sheet-heading' },
-    el('div', {}, el('div', { class: 'shelf-eyebrow' }, 'THE TRACKER'), el('h1', {}, reading ? 'A reading life' : 'An idea notebook')),
-    el('span', {}, `${completed} ${reading ? 'read' : 'made'} / ${rows.filter(x => !x.archived).length} collected`)));
-  const controls = el('div', { class: 'tracker-controls' });
-  const add = el('button', { class: 'tracker-add' }, reading ? '+ a book' : '+ an idea');
+  const blank = () => ({ id: uid(), title: '', detail: '', notes: '', status: statuses[0], date: reading ? '' : todayKey() });
+  const item = visible.find(x => x.id === notebookSelection[trackerKind]) || visible[0] || blank();
+  notebookSelection[trackerKind] = item.id;
+  const title = reading ? 'Reading' : 'Ideas';
+  const index = el('section', { class: 'page notebook-index', 'data-side': 'left', 'aria-label': `${title} index` });
+  const writing = el('section', { class: 'page notebook-writing', 'data-side': 'right', 'aria-label': reading ? 'Book notes' : 'Idea notebook' });
+  book.className = `book notebook-book ${reading ? 'reading-book' : 'ideas-book'}`;
+
+  const add = el('button', { class: 'notebook-add' }, reading ? '+ Add book' : '+ New idea');
   add.onclick = () => {
-    const item = { id: uid(), title: '', detail: '', notes: '', status: statuses[0], date: reading ? '' : todayKey() };
-    rows.push(item); showArchived = false; save(); render();
-    $(`[data-entry="${item.id}"] .entry-title`).focus();
+    // Reuse the untouched sheet instead of collecting empty entries.
+    const next = rows.find(x => !x.archived && !x.title && !x.detail && !x.notes) || blank();
+    if (!rows.includes(next)) rows.push(next);
+    notebookSelection[trackerKind] = next.id;
+    notebookDetail = true; showArchived = false; save(); render();
+    $('.notebook-title').focus();
   };
-  const archive = el('button', { class: 'archive-toggle', 'aria-pressed': String(showArchived) }, showArchived ? '← current entries' : 'archived');
-  archive.onclick = () => { showArchived = !showArchived; render(); };
-  controls.append(add, archive);
-  sheet.append(controls);
-  const ledger = el('div', { class: 'tracker-ledger' });
-  ledger.append(el('div', { class: 'ledger-head' }, el('span', {}, reading ? 'book / author' : 'idea / thread'),
-    el('span', {}, 'where it is'), el('span', {}, reading ? 'finished on' : 'captured on'), el('span', {}, reading ? 'thoughts & passages' : 'notes & next steps'), el('span')));
-  if (!visible.length) ledger.append(el('div', { class: 'tracker-empty' },
-    el('span', {}, showArchived ? 'Nothing archived.' : reading ? 'What are you reading?' : 'What’s on your mind?'),
-    el('p', {}, showArchived ? 'Your current entries are still in the notebook.' : reading ? 'Keep the books you want to read, and the ones that stayed with you.' : 'A sentence is enough to begin. You can come back to it.')));
-  for (const item of visible) {
-    const row = el('article', { class: 'ledger-row', 'data-entry': item.id });
-    const field = (key, placeholder, className) => {
-      const node = el('div', { class: className, 'data-placeholder': placeholder, role: 'textbox', 'aria-label': placeholder }, item[key] || '');
-      bindEditable(node, v => { item[key] = v; save(); }, { multiline: key === 'notes' });
-      return node;
-    };
-    const status = el('select', { 'aria-label': 'Status', class: 'entry-status' });
-    for (const s of statuses) status.append(el('option', { value: s }, s));
-    status.value = item.status;
-    status.onchange = () => {
-      item.status = status.value;
-      if (reading && item.status === 'finished' && !item.date) item.date = todayKey();
-      save(); render();
-    };
-    const date = el('input', { type: 'date', value: item.date, 'aria-label': reading ? 'Finished on' : 'Captured on', class: 'entry-date' });
-    date.onchange = () => { item.date = date.value; save(); };
-    const archiveEntry = el('button', { class: 'archive-entry', title: showArchived ? 'Restore entry' : 'Archive entry', 'aria-label': showArchived ? 'Restore entry' : 'Archive entry' }, showArchived ? '↶' : '↗');
-    archiveEntry.onclick = () => { item.archived = !item.archived; save(); render(); };
-    const identity = el('div', { class: 'entry-identity' }, field('title', reading ? 'Book title' : 'Idea', 'entry-title'), field('detail', reading ? 'Author' : 'Theme or project', 'entry-detail'));
-    if (reading) {
-      const open = el('button', { class: 'open-journal' }, `${item.liked ? '♥ · ' : ''}open journal →`);
-      open.onclick = () => { journalId = item.id; render(); window.scrollTo(0, 0); };
-      identity.append(open);
+  index.append(el('header', { class: 'notebook-heading' }, el('h1', {}, title), add));
+  const list = el('div', { class: 'notebook-list' });
+  function refreshIndex() {
+    list.replaceChildren();
+    const entries = rows.filter(x => !!x.archived === showArchived);
+    if (!entries.length) list.append(el('p', { class: 'notebook-empty' }, showArchived ? 'Nothing archived.' : reading ? 'No books yet.' : 'No ideas yet.'));
+    for (const entry of entries) {
+      const label = entry.title || (entry.notes || '').split('\n')[0] || (reading ? 'Untitled book' : 'Untitled idea');
+      const row = el('button', { class: 'notebook-index-entry', 'data-entry': entry.id, 'aria-pressed': String(entry.id === item.id) },
+        el('span', { class: 'notebook-index-title' }, `${reading && entry.liked ? '♥ ' : ''}${label}`),
+        el('span', { class: 'notebook-index-meta' }, [entry.detail, entry.status].filter(Boolean).join(' · ')));
+      row.onclick = () => { notebookSelection[trackerKind] = entry.id; notebookDetail = true; render(); };
+      list.append(row);
     }
-    row.append(identity,
-      status, date, field('notes', reading ? 'What stayed with you…' : 'Where could this go…', 'entry-notes'), archiveEntry);
-    ledger.append(row);
   }
-  sheet.append(ledger);
-  book.append(sheet);
+  refreshIndex();
+  const archive = el('button', { class: 'notebook-archive', 'aria-pressed': String(showArchived) }, showArchived ? '← Current entries' : 'Archived');
+  archive.onclick = () => { showArchived = !showArchived; notebookDetail = false; render(); };
+  index.append(list, archive);
+
+  // The blank ruled page is the editor, not an illustration of one. Its first
+  // keystroke creates an entry without re-rendering or moving the caret.
+  function persist() {
+    if (!rows.includes(item)) {
+      if (![item.title, item.detail, item.notes].some(value => value?.trim())) return;
+      rows.push(item);
+    }
+    save(); refreshIndex();
+  }
+  const field = (key, label, className, placeholder = label) => {
+    const node = el('div', { class: className, role: 'textbox', 'aria-label': label, 'aria-multiline': String(key === 'notes'), 'data-placeholder': placeholder }, item[key] || '');
+    bindEditable(node, value => {
+      // Blur must not replace an index button between pointerdown and click.
+      if ((item[key] || '') === value) return;
+      item[key] = value; persist();
+    }, { multiline: key === 'notes' });
+    return node;
+  };
+  const editorHead = el('header', { class: 'notebook-editor-heading' });
+  const back = el('button', { class: 'notebook-back' }, `← ${title.toLowerCase()} index`);
+  back.onclick = () => { notebookDetail = false; render(); };
+  if (singlePage()) editorHead.append(back);
+  else editorHead.append(el('span', { class: 'notebook-folio' }, String(Math.max(0, visible.indexOf(item)) + 1).padStart(2, '0')));
+  const archiveEntry = el('button', { class: 'notebook-archive' }, showArchived ? 'Restore' : 'Archive');
+  archiveEntry.onclick = () => {
+    if (!rows.includes(item)) return;
+    item.archived = !item.archived; notebookDetail = false; save(); render();
+  };
+  editorHead.append(archiveEntry);
+  const status = el('select', { 'aria-label': reading ? 'Reading status' : 'Idea status' });
+  for (const value of statuses) status.append(el('option', { value }, value));
+  status.value = item.status;
+  const date = el('input', { type: 'date', value: item.date || '', 'aria-label': reading ? 'Finished on' : 'Captured on' });
+  date.onchange = () => { item.date = date.value; persist(); };
+  status.onchange = () => {
+    item.status = status.value;
+    if (reading && item.status === 'finished' && !item.date) item.date = date.value = todayKey();
+    persist();
+  };
+  const meta = el('div', { class: 'notebook-meta' }, status, date);
+  writing.append(editorHead,
+    field('title', reading ? 'Book title' : 'Idea title', 'notebook-title'),
+    field('detail', reading ? 'Author' : 'Theme or project', 'notebook-detail'), meta);
+  if (reading) {
+    const open = el('button', { class: 'notebook-add notebook-open-journal' }, 'Open journal →');
+    open.onclick = () => {
+      if (!rows.includes(item)) { rows.push(item); save(); }
+      journalId = item.id; paperPart = 0; render(); window.scrollTo(0, 0);
+    };
+    writing.append(open);
+  }
+  writing.append(field('notes', reading ? 'Book notes' : 'Idea notes', 'notebook-notes', reading ? 'Write a note…' : 'Write an idea…'));
+  if (showArchived && !visible.length) writing.replaceChildren();
+  if (singlePage()) {
+    // Phones show an immediately writable first page; returning to the index
+    // remains possible after the first keystroke has saved an entry.
+    const showWriting = notebookDetail === true || (notebookDetail === null && !visible.length && !showArchived);
+    book.append(showWriting ? writing : index);
+  } else book.append(index, writing);
 }
 
 function renderJournal() {
@@ -1268,7 +1308,7 @@ function render() {
   if (marginVisible()) renderDesk();
   delete book.dataset.part;
   if (phone.matches || singlePage()) {
-    if ((plannerOpen && !isWeek() && (phone.matches || isMonth())) || journalId) {
+    if ((plannerOpen && !isWeek() && (phone.matches || isMonth())) || (journalId && singlePage())) {
       const labels = journalId ? ['reflection', 'notes'] : isMonth() ? ['month', 'notes'] : ['schedule', 'notes'];
       const segments = el('nav', { class: 'paper-segments section-segments', 'aria-label': 'Paper section' });
       labels.forEach((label, i) => {
