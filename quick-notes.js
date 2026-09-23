@@ -94,9 +94,10 @@
     const books = Object.entries(DESTS).map(([key, d]) => `${key} (${d.name}): ${d.sections.join(' | ')}`).join('\n');
     const today = `${DOW[now.getDay()]}, ${keyOf(now)}`;
     const response = await client.messages.create({
-      model: 'claude-opus-5',
-      max_tokens: 1024,
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
+      // The cheapest current model; filing one short note doesn't need more.
+      model: 'claude-haiku-4-5',
+      max_tokens: 512,
+      output_config: { format: { type: 'json_schema', schema: SCHEMA } },
       system: `You file one short handwritten note into a paper planner. Today is ${today}.
 Books and their sections:
 ${books}

@@ -66,4 +66,6 @@ test('claude sorting sends only the note and validates the reply', async () => {
   assert.deepEqual(out, { book: 'planner', section: 'time block', date: '2026-10-08', time: 13, duration: 60, text: 'lunch with mom' });
   assert.deepEqual(sent.messages, [{ role: 'user', content: 'lunch with mom at 1pm on october 8' }]);
   assert.equal(sent.output_config.format.type, 'json_schema');
+  assert.equal(sent.model, 'claude-haiku-4-5');
+  assert.equal(sent.output_config.effort, undefined, 'Haiku 4.5 does not take an effort setting');
 });
