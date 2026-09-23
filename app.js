@@ -1468,7 +1468,7 @@ function renderDayBook() {
   const surfaceEl = el('div', { class: 'binder-surface' });
   surfaceEl.append(el('div', { class: 'binder-head' }, el('span', { class: 'num' }, String(date.getDate())),
     el('div', { class: 'stack mono', style: 'display:flex;flex-direction:column;line-height:14px' }, el('span', {}, `DAY BOOK · ${DOW[date.getDay()]}`), el('span', { style: 'color:var(--ink-2)' }, monthYear(key))),
-    el('div', { class: 'steps' }, steps.map(([k, name, id]) => button(name, () => flipTo(id), { class: `step${done[k] ? ' done' : k === now ? ' now' : ''}`, 'data-mark': done[k] ? '✓' : '', 'aria-current': String(chunks[at].includes(id)) })))));
+    el('div', { class: 'steps' }, steps.map(([k, name, id]) => button(name, () => flipTo(id), { class: `step${done[k] ? ' done' : k === now ? ' current' : ''}`, 'data-mark': done[k] ? '✓' : '', 'aria-current': String(chunks[at].includes(id)) })))));
   if (!order.length) { surfaceEl.append(el('p', { class: 'empty-line', style: 'width:min(1180px,100%);margin:0 auto' }, 'choose the day book pages in settings.')); book.className = 'book binder-host'; delete book.dataset.cover; book.append(surfaceEl); return; }
   const tabs = [['morning pages', BOOKS.morning.cover, 'm1'], ['page 2', BOOKS.morning.cover, 'm2'], ['day', BOOKS.planner.cover, 'day'], ['gratitude', BOOKS.gratitude.cover, 'mood']]
     .filter(([, , id]) => order.includes(id) && (id !== 'm2' || per === 1));
