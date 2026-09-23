@@ -1,4 +1,4 @@
-# Features changed or removed in the desk redesign (xuan journals, formerly Dayblock)
+# Features changed or removed in the Dayblock desk redesign
 
 The September 2026 redesign (Claude Design handoff: desk system, notebooks, quick
 notes) replaced some controls. Nothing here deleted stored data: every entry these

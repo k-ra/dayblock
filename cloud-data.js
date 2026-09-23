@@ -4,7 +4,7 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const object = value => value && typeof value === 'object' && !Array.isArray(value);
   function validate(data) {
-    if (!object(data) || !object(data.settings) || !object(data.days)) throw new Error('This is not a xuan journals (Dayblock) backup.');
+    if (!object(data) || !object(data.settings) || !object(data.days)) throw new Error('This is not a Dayblock backup.');
     function walk(value, depth = 0) {
       if (depth > 24) throw new Error('Backup is too deeply nested.');
       if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {

@@ -1,6 +1,6 @@
-# xuan journals
+# dayblock
 
-*(formerly Dayblock)* A quiet, local-first planner shown as a desk of notebooks.
+A quiet, local-first planner shown as a desk of notebooks.
 I'm mainly making it for myself: timeblocking and quick notes without carrying a
 physical planner. Everything saves in your browser, and optionally to a Google
 account once cloud sign-in is set up ([Activate Google sign-in](CLOUD-SETUP.md)).
@@ -52,7 +52,7 @@ notebooks, quick notes). What changed or moved is listed in
 
 ## Try it
 
-[Open it](https://k-ra.github.io/xuan-journals/) in your browser, or run it locally.
+[Open it](https://k-ra.github.io/dayblock/) in your browser, or run it locally.
 There is no build step and no package installation.
 
 ```bash
@@ -70,7 +70,7 @@ Then open [http://localhost:8000](http://localhost:8000).
 ## Privacy and storage
 
 Without sign-in, everything stays in this browser's `localStorage` under the
-same key as before the rename (`spread-planner.v1`), so existing notebooks open
+same key as before (`spread-planner.v1`), so existing notebooks open
 unchanged. The first load after the redesign keeps one untouched copy of the
 old notebooks at `dayblock.before-redesign.v1`. With cloud saving activated,
 Firebase stores your notebooks under your own UID; see

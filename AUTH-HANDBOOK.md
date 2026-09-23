@@ -27,7 +27,7 @@ key into the repo. The Claude key is the only secret, and it never enters the re
 In the [Firebase console](https://console.firebase.google.com/), open your project.
 
 - [ ] **Project settings (gear) → General → Your apps → `</>` Web.** Nickname:
-      "xuan journals". Leave Firebase Hosting **off**. Register.
+      "Dayblock". Leave Firebase Hosting **off**. Register.
 - [ ] Copy the four values it shows into `firebase-config.js`:
   ```js
   window.DAYBLOCK_FIREBASE_CONFIG = {
@@ -57,7 +57,7 @@ Open the [Google Cloud console](https://console.cloud.google.com/) and **pick
 that project in the picker at the top**.
 
 - [ ] **APIs & Services → Library →** search "Google Calendar API" → **Enable.**
-- [ ] **Google Auth Platform → Branding:** app name **xuan journals**, your
+- [ ] **Google Auth Platform → Branding:** app name **Dayblock**, your
       email for support and developer contact. Save. (Firebase may have
       filled in a project ID here; this is the name Google shows when you sign in.)
 - [ ] **Google Auth Platform → Audience:** leave it on **Testing**, then under
@@ -89,7 +89,7 @@ tab. If you'd rather stay signed in, tell me and I'll change it; it's one line.
 ## 4. Claude (sorting quick notes)
 
 - [ ] [Anthropic console](https://console.anthropic.com/) → **API keys** → create
-      one named "xuan journals".
+      one named "Dayblock".
 - [ ] **Billing → Limits:** set a small monthly limit. A sorted note costs a
       fraction of a cent.
 - [ ] On each device: shelf → **settings → quick notes** → turn on **include

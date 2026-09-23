@@ -1,9 +1,9 @@
 # Activate Google sign-in and cloud notebooks
 
-xuan journals stays on GitHub Pages. Firebase supplies Google sign-in and a private
+Dayblock stays on GitHub Pages. Firebase supplies Google sign-in and a private
 Cloud Firestore document for each account. No custom server or client secret is
-needed. The code is built, but the empty `firebase-config.js` deliberately keeps
-cloud sign-in disabled until you complete this setup.
+needed. The existing `xuan-journal` Firebase project remains connected after
+the Dayblock rename; its project ID and authentication data must not be changed.
 
 ## 1. Protect the notebooks you already have
 
@@ -19,9 +19,9 @@ with entries you want to keep.
 ## 2. Create a Firebase project and web app
 
 1. Open the [Firebase console](https://console.firebase.google.com/) and create
-   a project for xuan journals. You can reuse the Google Cloud project from your
+   a project for Dayblock. You can reuse the Google Cloud project from your
    Calendar setup by adding Firebase to it.
-2. Google Analytics is optional; xuan journals does not use it.
+2. Google Analytics is optional; Dayblock does not use it.
 3. In Project settings → General → Your apps, add a **Web app** (`</>`).
    You do not need Firebase Hosting; GitHub Pages remains the website host.
 4. Copy the web app's configuration values into `firebase-config.js`:
@@ -46,7 +46,7 @@ configuration. [Firebase web configuration](https://firebase.google.com/docs/web
 1. Firebase console → Authentication → Get started → Sign-in method.
 2. Enable **Google**, choose a support email, and save.
 3. Authentication → Settings → Authorized domains: add `k-ra.github.io`.
-   Enter only the hostname, not `https://` or `/xuan-journals/`.
+   Enter only the hostname, not `https://` or `/dayblock/`.
 4. For local testing, also add `localhost` and `127.0.0.1` if you use those
    addresses. Keep the existing Firebase auth-domain entries.
 
@@ -66,11 +66,11 @@ restores that account's notebooks. [Google sign-in setup](https://firebase.googl
 5. Do not add an `allow read, write: if true` rule. A broad allow elsewhere
    overrides the protection provided by the narrow account rules.
 
-xuan journals stores each account at `users/GOOGLE_FIREBASE_UID/notebooks/main`.
+Dayblock stores each account at `users/GOOGLE_FIREBASE_UID/notebooks/main`.
 The supplied rules permit only that signed-in UID to read or update its
 document, validate the document fields, and require sequential revisions.
 Other paths and document deletion are denied. No indexes need creating for
-xuan journals's direct-document reads. [Create Firestore](https://firebase.google.com/docs/firestore/quickstart),
+Dayblock's direct-document reads. [Create Firestore](https://firebase.google.com/docs/firestore/quickstart),
 [user-owned data rules](https://firebase.google.com/docs/firestore/security/rules-conditions).
 
 In the Rules Playground, check that an unauthenticated read is denied, a user
@@ -80,11 +80,11 @@ importing personal notebooks. These are database rules, not GitHub permissions.
 ## 5. Publish the configured code
 
 Save `firebase-config.js`, then have me push this feature and that configuration
-to the existing xuan journals repository. The Google sign-in button on GitHub Pages
+to the existing Dayblock repository. The Google sign-in button on GitHub Pages
 will become available once that version deploys. Publishing website files does
 **not** publish Firestore rules; step 4 must be done in Firebase separately.
 
-For local testing, from the xuan journals folder run:
+For local testing, from the Dayblock folder run:
 
 ```sh
 python3 -m http.server 8000
@@ -95,12 +95,12 @@ consistently, since each origin has separate browser storage.
 
 ## 6. Import your browser notebooks and verify your phone
 
-1. Open [xuan journals](https://k-ra.github.io/xuan-journals/).
+1. Open [Dayblock](https://k-ra.github.io/dayblock/).
 2. If the entries were in your file preview, open **settings** → data →
    **import**, and select the JSON file from step 1. This combines it
    with any entries already on that website; it does not replace them.
 3. In **settings**, click **sign in with google**, choose your account, then choose
-   **Import browser notebooks** in xuan journals's prompt.
+   **Import browser notebooks** in Dayblock's prompt.
 4. If the account already has cloud entries, both sets are kept. Conflicting
    entries can appear as separate copies; differing free-form day/month text
    is appended under an “Imported copy” marker. Review duplicates afterward.

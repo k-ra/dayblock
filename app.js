@@ -1,4 +1,4 @@
-/* xuan journals (formerly Dayblock) — a planner shown as a desk of notebooks.
+/* Dayblock — a planner shown as a desk of notebooks.
    Local-first notebooks with optional Google account sync; no build step. */
 (() => {
 'use strict';
@@ -1520,7 +1520,7 @@ function renderShelf() {
     pile.append(button(el('span', { class: 'tag' }, b.name), () => openBook(kind),
       { class: `spine${kind === 'daybook' ? ' binder-spine' : ''}`, style: `--cover:${b.cover};--w:${b.w + wide}px`, 'aria-label': `Open ${b.name}` }));
   }
-  shelfEl.append(el('h1', { class: 'shelf-title mono' }, 'xuan journals'), pile, stickyFile());
+  shelfEl.append(el('h1', { class: 'shelf-title mono' }, 'dayblock'), pile, stickyFile());
 }
 function noteTint(note) { return note.dest === 'catchall' ? 'rgba(255,255,255,.62)' : `color-mix(in oklch, var(--pen-${BOOKS[note.dest]?.pen || 'bone'}) 62%, rgba(255,255,255,.72))`; }
 function stickyFile() {
@@ -1864,7 +1864,7 @@ function renderOnboarding() {
   ];
   // Keep the same post-it so it drops in once, not on every keystroke.
   let postit = onboardEl.querySelector('.postit');
-  if (!postit) { postit = el('div', { class: 'postit', role: 'dialog', 'aria-label': 'Welcome to xuan journals' }); onboardEl.replaceChildren(postit); }
+  if (!postit) { postit = el('div', { class: 'postit', role: 'dialog', 'aria-label': 'Welcome to Dayblock' }); onboardEl.replaceChildren(postit); }
   postit.replaceChildren(el('div', { class: 'hi' }, el('span', {}, 'hi, I am'), nameInput), ...tasks.filter(Boolean));
   if (focused || !onboard.name) { nameInput.focus(); nameInput.setSelectionRange(nameInput.value.length, nameInput.value.length); }
 }

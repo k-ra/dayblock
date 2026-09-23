@@ -1,6 +1,6 @@
 # Google Calendar: one-time app setup
 
-xuan journals imports each visitor's own **primary Google calendar**, read-only.
+Dayblock imports each visitor's own **primary Google calendar**, read-only.
 Visitors click Connect and authorize their own account. They do not provide
 client IDs, API keys, passwords, or client secrets.
 
@@ -23,7 +23,7 @@ ID set, the calendar uses its own Connect button instead of sign-in.
 ## Behavior and privacy
 
 - Only GET requests fetch events. Google events cannot be dragged, edited,
-  recolored, or deleted inside xuan journals; clicking one opens a read-only detail.
+  recolored, or deleted inside Dayblock; clicking one opens a read-only detail.
 - Imports include the displayed month plus the adjacent months, recurring
   instances, all-day events, and multi-day events. Times use the browser's local
   timezone. Events before the planner's 8 am start appear as day labels.
@@ -31,7 +31,7 @@ ID set, the calendar uses its own Connect button instead of sign-in.
   events disappear and repeated refreshes do not create duplicates. A failed
   refresh leaves the last successful import in place.
 - Imported records are separate from hand-written planner entries. They are
-  cached in that browser, never checked into GitHub or sent to a xuan journals server.
+  cached in that browser, never checked into GitHub or sent to a Dayblock server.
 - Access tokens stay in memory, not localStorage or files. A reload or expired
   token requires a Connect/Reconnect click. Returning to an open tab and
   navigating to a new month refresh automatically while authorization is valid.

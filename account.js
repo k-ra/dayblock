@@ -10,7 +10,7 @@ window.DayblockAccount = {
     function download(data, suffix = 'backup') {
       const blob = new Blob([JSON.stringify({ format: 'dayblock-backup', version: 1, exportedAt: new Date().toISOString(), data: D.portable(data) }, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob), a = document.createElement('a');
-      a.href = url; a.download = `xuan-journals-${suffix}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.href = url; a.download = `dayblock-${suffix}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     function report({ phase, message: text, user }) {
@@ -65,7 +65,7 @@ window.DayblockAccount = {
       try { if (authUser) await sync.switchUser(authUser); else await remote.signIn(); }
       catch (error) {
         const help = {
-          'auth/popup-blocked': 'Allow popups for xuan journals, then try again. On your phone, open it in Safari or Chrome.',
+          'auth/popup-blocked': 'Allow popups for Dayblock, then try again. On your phone, open it in Safari or Chrome.',
           'auth/popup-closed-by-user': 'Sign-in cancelled. Your notebooks are unchanged.',
           'auth/unauthorized-domain': 'This address is not enabled for sign-in. Add its domain in Firebase Authentication settings.',
           'auth/operation-not-allowed': 'Enable Google under Firebase Authentication → Sign-in method.',
