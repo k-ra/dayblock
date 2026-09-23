@@ -4,11 +4,15 @@ Dayblock stays on GitHub Pages. Firebase supplies Google sign-in and a private
 Cloud Firestore document for each account. No custom server or client secret is
 needed. The existing `xuan-journal` Firebase project remains connected after
 the Dayblock rename; its project ID and authentication data must not be changed.
+The web app configuration is already in `firebase-config.js`; do not create a
+second Firebase project or web app just because the name changed. Google may
+still show the old name on its consent screen until it is changed separately
+under Google Auth Platform → Branding.
 
 ## 1. Protect the notebooks you already have
 
-In the browser where you have been writing, open **settings** → data →
-**export .json**. Keep that JSON file somewhere private.
+In the browser where you have been writing, open the bookshelf → **settings** →
+**backups** → **export .json**. Keep that JSON file somewhere private.
 
 Your current `file:///Users/kmo/Desktop/Hub/dayblock/index.html` preview has its
 own browser storage. Google sign-in cannot run on that address. Export there
@@ -16,7 +20,10 @@ first; you will import the file on the live site in step 6. The app cannot read
 another origin's storage automatically. Repeat for any other browser/address
 with entries you want to keep.
 
-## 2. Create a Firebase project and web app
+## 2. Firebase setup reference (already done for this site)
+
+Skip this section for the existing `xuan-journal` project. These steps are only
+for a fresh installation.
 
 1. Open the [Firebase console](https://console.firebase.google.com/) and create
    a project for Dayblock. You can reuse the Google Cloud project from your
@@ -77,12 +84,12 @@ In the Rules Playground, check that an unauthenticated read is denied, a user
 can read their own document, and a different UID cannot read it. Do this before
 importing personal notebooks. These are database rules, not GitHub permissions.
 
-## 5. Publish the configured code
+## 5. Publish the configured code (fresh installations only)
 
-Save `firebase-config.js`, then have me push this feature and that configuration
-to the existing Dayblock repository. The Google sign-in button on GitHub Pages
-will become available once that version deploys. Publishing website files does
-**not** publish Firestore rules; step 4 must be done in Firebase separately.
+This repository already has its Firebase web configuration. For a fresh
+installation, save `firebase-config.js`, then publish it to the Dayblock
+repository. Publishing website files does **not** publish Firestore rules;
+step 4 must be done in Firebase separately.
 
 For local testing, from the Dayblock folder run:
 
@@ -96,8 +103,8 @@ consistently, since each origin has separate browser storage.
 ## 6. Import your browser notebooks and verify your phone
 
 1. Open [Dayblock](https://k-ra.github.io/dayblock/).
-2. If the entries were in your file preview, open **settings** → data →
-   **import**, and select the JSON file from step 1. This combines it
+2. If the entries were in your file preview, open the bookshelf → **settings** →
+   **backups** → **import**, and select the JSON file from step 1. This combines it
    with any entries already on that website; it does not replace them.
 3. In **settings**, click **sign in with google**, choose your account, then choose
    **Import browser notebooks** in Dayblock's prompt.

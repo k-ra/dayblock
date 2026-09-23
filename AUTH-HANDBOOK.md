@@ -3,6 +3,8 @@
 You've already made the Firebase project, so this starts from there. There's
 one project for everything and one sign-in: **Google sign-in also brings your
 calendar**, read-only. There's no separate calendar client to set up.
+The existing Firebase project is still named `xuan-journal` internally; keep
+using it. A new project or web app would not contain your current cloud notebooks.
 
 | What you get | Where it's set up | What you paste |
 |---|---|---|
@@ -18,17 +20,18 @@ key into the repo. The Claude key is the only secret, and it never enters the re
 
 ## 0. Protect what you have
 
-- [ ] On the **live site as it is now**, open the bookshelf → **sign in / backup** →
-      **Export backup**. Keep the file somewhere private.
+- [ ] On the **live site as it is now**, open the bookshelf → **settings** →
+      **backups** → **export .json**. Keep the file somewhere private.
 - [ ] Do the same anywhere else you've written entries (e.g. the `file:///…` preview).
 
 ## 1. Firebase: sign-in and cloud save
 
 In the [Firebase console](https://console.firebase.google.com/), open your project.
 
-- [ ] **Project settings (gear) → General → Your apps → `</>` Web.** Nickname:
-      "Dayblock". Leave Firebase Hosting **off**. Register.
-- [ ] Copy the four values it shows into `firebase-config.js`:
+- [ ] **Project settings (gear) → General → Your apps → `</>` Web.** The
+      existing web app is already configured; its nickname can stay as it is.
+      Do not register a second one for the Dayblock rename.
+- [ ] For a fresh installation only, copy the four values it shows into `firebase-config.js`:
   ```js
   window.DAYBLOCK_FIREBASE_CONFIG = {
     apiKey: '…',
