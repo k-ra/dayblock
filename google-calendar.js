@@ -37,12 +37,27 @@
     const [year, month] = key.split('-').map(Number);
     return { start: new Date(year, month - 2, 1).toISOString(), end: new Date(year, month + 1, 1).toISOString() };
   }
-  function createClient({ clientId, onStatus, onEvents, fetcher = (...args) => root.fetch(...args) }) {
+  // Two ways to get a read-only token: the Google sign-in (tokenSource), or a
+  // separate calendar-only OAuth client (clientId). Sign-in needs no extra setup.
+  function createClient({ clientId, tokenSource, onStatus, onEvents, fetcher = (...args) => root.fetch(...args) }) {
     let client, token = '', expiresAt = 0, pendingWindow, currentWindow, lastSync = 0, aborter, generation = 0, expiryTimer;
     let preparing, busy = false;
     const status = (phase, message) => onStatus({ phase, message });
     const validToken = () => token && Date.now() < expiresAt;
+    function accept(accessToken, expiresIn) {
+      aborter?.abort(); generation++;
+      token = accessToken;
+      expiresAt = Date.now() + Math.max(0, Number(expiresIn || 0) - 30) * 1000;
+      root.clearTimeout(expiryTimer);
+      expiryTimer = root.setTimeout(() => { token = ''; status('reconnect', 'Refresh to update your calendar. Saved events are still visible.'); }, Math.max(0, expiresAt - Date.now()));
+    }
     async function prepare() {
+      if (tokenSource) {
+        if (root.location?.protocol === 'file:') { status('unavailable', 'Use the live site or localhost to connect Google Calendar.'); return false; }
+        if (!tokenSource.available()) { status('signin', 'Sign in with Google to see your calendar here.'); return false; }
+        if (!validToken()) status('ready', 'Your primary calendar · read-only');
+        return true;
+      }
       if (!clientId) { status('unconfigured', 'Google Calendar needs a one-time app setup.'); return false; }
       if (root.location?.protocol === 'file:') { status('unavailable', 'Use the live site or localhost to connect Google Calendar.'); return false; }
       if (client) return true;
@@ -64,11 +79,7 @@
               if (response.error || !response.access_token || !root.google.accounts.oauth2.hasGrantedAllScopes(response, SCOPE)) {
                 status('reconnect', 'Read-only Calendar access was not granted. You can try again.'); return;
               }
-              aborter?.abort(); generation++;
-              token = response.access_token;
-              expiresAt = Date.now() + Math.max(0, Number(response.expires_in || 0) - 30) * 1000;
-              root.clearTimeout(expiryTimer);
-              expiryTimer = root.setTimeout(() => { token = ''; status('reconnect', 'Reconnect to update your calendar. Saved events are still visible.'); }, Math.max(0, expiresAt - Date.now()));
+              accept(response.access_token, response.expires_in);
               refresh(pendingWindow, true);
             },
             error_callback: () => status('reconnect', 'Google sign-in was closed or blocked. Try Connect again.'),
@@ -82,6 +93,14 @@
     }
     function connect(window) {
       pendingWindow = window;
+      if (tokenSource) {
+        if (!tokenSource.available()) { prepare(); return; }
+        // Must run directly from a click: Google opens a popup for a fresh token.
+        status('loading', 'Asking Google for read-only access…');
+        tokenSource.request().then(t => { accept(t.accessToken, t.expiresIn); refresh(pendingWindow, true); },
+          () => status('reconnect', 'Google closed without calendar access. You can try again.'));
+        return;
+      }
       if (!client) { prepare(); return; }
       // Must run directly from a click, not a timer or a silent popup on page load.
       try { client.requestAccessToken({ prompt: '' }); }
@@ -113,8 +132,9 @@
         status('connected', 'Google Calendar is up to date · read-only');
       } catch (error) {
         if (error.name === 'AbortError' || request !== generation) return;
-        if (error.status === 401) { token = ''; status('reconnect', 'Reconnect to update your calendar.'); }
-        else status('error', error.status === 403 ? 'Calendar access is unavailable. Check the app setup and your Google permissions.' : 'Could not update. Previously imported events are unchanged.');
+        if (error.status === 401) { token = ''; status('reconnect', 'Refresh to update your calendar.'); }
+        else if (error.status === 403) { token = ''; status('reconnect', 'Calendar access wasn’t allowed. Refresh and tick the calendar box in Google’s window.'); }
+        else status('error', 'Could not update. Previously imported events are unchanged.');
       } finally { if (request === generation) busy = false; }
     }
     function disconnect() {
@@ -123,7 +143,13 @@
       token = ''; expiresAt = 0; currentWindow = null; lastSync = 0; busy = false;
       status('ready', 'Disconnected. Your own planner entries are unchanged.');
     }
-    return { prepare, connect, refresh, disconnect, validToken };
+    // Sign-in already granted a token: start using it right away.
+    function useToken({ accessToken, expiresIn }, window) {
+      if (!accessToken) return;
+      accept(accessToken, expiresIn);
+      refresh(window || pendingWindow, true);
+    }
+    return { prepare, connect, refresh, disconnect, validToken, useToken };
   }
   const api = { SCOPE, normalizeEvents, eventsOnDate, windowFor, createClient };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

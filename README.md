@@ -1,54 +1,57 @@
-# Dayblock — early local prototype
+# xuan journals
 
-A quiet, local-first planner for stationery lovers. I'm mainly making Dayblock for myself: timeblocking and quick notes without carrying a physical planner. You can separate work hours from after-work hours, plan across two facing days, and keep everything on your own device.
+*(formerly Dayblock)* A quiet, local-first planner shown as a desk of notebooks.
+I'm mainly making it for myself: timeblocking and quick notes without carrying a
+physical planner. Everything saves in your browser, and optionally to a Google
+account once cloud sign-in is set up ([Activate Google sign-in](CLOUD-SETUP.md)).
 
-Open a book from the bookshelf: the daily planner, ideas notebook, or reading log.
-The planner has day, week, and month views sharing the same dated entries.
+The September 2026 redesign follows the Claude Design handoff (desk system,
+notebooks, quick notes). What changed or moved is listed in
+[REMOVED-FEATURES.md](REMOVED-FEATURES.md); no stored entries were dropped.
 
-Each reading entry opens a two-page journal. Book details stay synced with the
-index. Like a book with the heart, and optionally mark Recommend? and Reread?
-yes or no (tap the selected answer again to clear it). The left page holds first
-impressions, summary, and takeaways; the right holds final thoughts and unstructured
-notes that expand for long writing. Existing index notes appear in that notes area.
-Entries save automatically in this browser. Desktop starts with a spread and
-an optional stationery margin; phones start with a single page and no margin.
-Every notebook uses the same paper sizing and tucks the margin away when there isn't room
-for both, without deleting notes or forgetting the margin preference. Page/spread
-choices are remembered separately for desktop and phone, independently of day,
-week, and month. The complete seven-day week fits one
-page, including on phones: hour rows resize to the available height, with a
-shared time gutter and notes for every day. Tap a small block to edit its details.
-Month also fits the screen; its notes and longer writing sections have their own
-tabs along the bottom of its paper in page mode. Day, week, and month share a
-date-heading style; weeks show their actual date range. Page/spread/margin controls stay above the paper in every
-notebook, alongside day/week/month in the planner. Its ellipsis reveals settings inline in the bottom bar, wrapping
-within the bar on small screens. Reading-journal navigation stays below the paper.
+## The desk
 
-## What it does
+- **Shelf.** A pile of cloth books: planner, ideas, book log, morning pages,
+  gratitude, recipes, and the day book binder. Hide any of them in settings.
+  The **sticky file** sits under the pile.
+- **Planner.** Day spread (or one page), week, and month on the same dated
+  entries. Drag on the hours to draw a block; the highlighter palette pops up
+  beside it. Move, resize, retitle, recolour, delete. Todos roll forward to
+  today and keep their origin. Done, notes, a focus line, the habits line at
+  the foot of each day, and a mini month. Week and month have their own focus
+  and notes. On a phone, tap a day in the month to add a block, todo, or
+  all-day note.
+- **Ideas** (index + entry), **book log** (contents + a journal spread per
+  book), **recipes** (contents, shopping list, ingredients that can go to
+  today's todos, numbered method), **morning pages** (two pages a day, start
+  time, words and minutes), **gratitude** (a five-part mood bar you paint, a
+  year in pixels, morning and evening lists).
+- **Day book.** A binder that gathers today's morning pages, schedule, and
+  mood + gratitude, laid out to fit: two pages to a spread, a lone page on its
+  own, or one at a time in page mode. The divider tabs flip between them.
+  Everything you write there goes straight into those books.
+- **Quick note.** In the bottom bar on every page: a clear sticky you write on
+  and *put away*. Notes wait in the sticky file, just as you wrote them. Open
+  the file to file a note into a book, move it, restore it, or mark it done.
+- **AI sorting (optional).** Settings → quick notes → *include quick notes with
+  ai*, then connect Claude with an Anthropic API key. Each note's text alone is
+  sent when you put it away and is filed into a book (a keyword fallback runs
+  only if Claude fails). The key stays on that device; it is never synced or
+  exported. The original words are always kept.
+- **Settings** rise from the bottom; click outside to go back. From the shelf
+  they are the full book: books on the shelf (tap the little spines), day book
+  pages, quick notes, hours shown, week start, writing lines, your account,
+  Google Calendar, backups. Inside a notebook they are a small card with the
+  everyday few.
+- **Desk** (the button above the paper). On wide screens, your loose stickies and
+  a week index card sit on the desk beside the book. Phones hide them without losing them.
+- Google Calendar (read-only) comes with Google sign-in: see
+  [AUTH-HANDBOOK.md](AUTH-HANDBOOK.md) for the one-time setup.
+- Export/import JSON backups. Imports keep existing entries.
 
-- Draw, move, resize, label, and recolor time blocks across two facing pages.
-- Roll unfinished todos forward automatically while preserving their origin.
-- Record daily deliverables and free-form notes.
-- Track weekly habits and current streaks.
-- Keep one shared catchall at the bottom of every notebook. Drafts and saved
-  notes persist; mark an item done or reopen it without deleting it.
-- Import a primary Google calendar read-only after the app's one-time OAuth
-  configuration. See [Google Calendar setup](GOOGLE-CALENDAR.md).
-- Switch among all hours, work hours, and off hours without deleting hidden
-  events.
-- Optionally fold completed hours on today's daily page. The current hour stays
-  visible; “earlier hours · show” unfolds the page. Weekly views retain a shared
-  time scale, and historical/future daily pages stay unchanged.
-- Toggle a desktop stationery margin for highlighters, an index card, and
-  sticky notes. New notes dock beside the book until dragged onto the paper.
-  Phones hide the margin and its controls without losing the desktop preference
-  or any notes.
-- Jump between days with the mini calendar or arrow keys.
+## Try it
 
-## Try it locally
-
-[Open Dayblock](https://k-ra.github.io/dayblock/) in your browser, or run it locally:
-
+[Open it](https://k-ra.github.io/dayblock/) in your browser, or run it locally.
 There is no build step and no package installation.
 
 ```bash
@@ -57,46 +60,53 @@ python3 -m http.server 8000
 
 Then open [http://localhost:8000](http://localhost:8000).
 
-You can also open `index.html` directly. Serving the folder is recommended so
-the browser treats it like an ordinary website.
-
 ## Keyboard
 
-- `←` and `→` move by the current day, spread, week, or month when not editing text.
+- `←` and `→` move by day, spread, week, or month in the planner, and by day in
+  gratitude, morning pages, and the day book, when you are not typing.
+- `Esc` closes the quick note, the sticky stack, and popovers.
 
 ## Privacy and storage
 
-Dayblock has no planner account, server, analytics, or database. Planner content
-is saved to this browser's `localStorage`; it is not uploaded by the app.
-The optional Google connection reads the visitor's own calendar and caches its
-events separately in that browser. Authorization tokens stay in memory only.
-Clearing browser storage will erase it, so this early release should not be the
-only copy of anything important.
+Without sign-in, everything stays in this browser's `localStorage` under the
+same key as before the rename (`spread-planner.v1`), so existing notebooks open
+unchanged. The first load after the redesign keeps one untouched copy of the
+old notebooks at `dayblock.before-redesign.v1`. With cloud saving activated,
+Firebase stores your notebooks under your own UID; see
+[CLOUD-SETUP.md](CLOUD-SETUP.md). With AI sorting on, the text of each quick
+note (and nothing else) goes to the Anthropic API using your own key. Calendar
+events, access tokens, and the Claude key are never part of backups or cloud
+sync. Keep exported backups; this early release should not be the only copy of
+anything important.
 
 ## Project structure
 
 ```text
-index.html   page structure and controls
-styles.css   book, paper, stationery, and responsive layout
-app.js       planner state, interactions, and local persistence
-planner-layout.js  book-first sizing and reversible timeline geometry
-favicon.svg  the little notebook site icon
-calendar-config.js  public app OAuth client ID (no secret)
-google-calendar.js  read-only import and authorization
+index.html          page structure
+styles.css          desk, cloth, paper, loose paper; phone layout
+app.js              state, migration, every notebook, shelf, settings, onboarding
+quick-notes.js      quick-note sorting (Claude + keyword fallback) and filing
+planner-layout.js   book-first sizing and reversible timeline geometry
+google-calendar.js  read-only Calendar import and authorization
+calendar-config.js  optional separate calendar client ID (empty; sign-in covers it)
+firebase-config.js  public Firebase web configuration (no private keys)
+firebase-adapter.js Google sign-in and revision-checked Firestore transactions
+cloud-data.js       backup validation and content-preserving imports
+cloud-sync.js       account isolation, device caches, sync conflicts
+account.js          account window, sign-in and backup controls
+firestore.rules     private-per-user rules to deploy in Firebase
 ```
 
-The site loads IBM Plex Sans and IBM Plex Mono from Google Fonts, with system
-fallbacks offline. When a Google client ID is configured, it also loads Google's
-authorization library. Calendar API requests run only after authorization.
+IBM Plex Sans and Mono load from Google Fonts. The Anthropic SDK loads from
+esm.sh only when AI sorting runs. Firebase and Google's authorization library
+load only when configured.
 
-## Status
+## Tests
 
-The per-day magic entry line is removed. The bottom catchall is deliberately
-unsorted and shared; it does not guess times or route text into other notebooks.
+```bash
+TZ=America/Los_Angeles node --test tests/*.test.cjs
+```
 
-Run `TZ=America/Los_Angeles node --test tests/*.test.cjs` for the planner geometry
-and synthetic Calendar import tests. Live Google sign-in still needs OAuth setup.
-
-The core planner is usable today. Export/import, accessibility review, automated
-interaction tests, and stronger mobile behavior would make sensible next
-milestones.
+These cover planner geometry, backup and merge, mocked cloud sync, synthetic
+Calendar data, and quick-note sorting and filing. Real Google sign-in, Firestore
+rules, and live Claude sorting still need checking once they are configured.

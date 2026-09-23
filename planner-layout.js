@@ -15,7 +15,7 @@
   }
 
   function timeline({ view = 'all', workStart = 9, workEnd = 18, hidePast = false,
-    today = false, now = 0, weekly = false, paperHeight = 600 }) {
+    today = false, now = 0, weekly = false, paperHeight = 600, maxPph = 72 }) {
     const dayStart = 8, dayEnd = 24, gapHeight = 26;
     // Keep the current hour intact. Weekly columns retain their common axis.
     const start = hidePast && today && !weekly ? clamp(Math.floor(now), dayStart, 23) : dayStart;
@@ -30,7 +30,7 @@
     const gaps = parts.filter(([type]) => type !== 'seg').length;
     const target = weekly ? Math.max(80, Math.min(560, paperHeight * .56, paperHeight - 250)) : Math.max(160, paperHeight - 150);
     // Folding a late evening should not turn two hours into enormous boxes.
-    const pph = Math.min(72, Math.max(6, (target - gaps * gapHeight) / (visible || 1)));
+    const pph = Math.min(maxPph, Math.max(6, (target - gaps * gapHeight) / (visible || 1)));
     let y = 0;
     const items = parts.map(([type, from, to]) => {
       const h = type === 'seg' ? (to - from) * pph : gapHeight;

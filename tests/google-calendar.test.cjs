@@ -100,3 +100,50 @@ test('missing app client ID cannot start authentication or fetch events', async 
   assert.equal(await client.prepare(), false);
   assert.equal(status.phase, 'unconfigured');
 });
+
+test('with sign-in as the token source, nothing happens until someone is signed in', async () => {
+  let status;
+  const { createClient } = require('../google-calendar.js');
+  const client = createClient({ tokenSource: { available: () => false, request: () => assert.fail('Unexpected popup') },
+    onStatus: value => { status = value; }, onEvents: () => assert.fail('Unexpected import'), fetcher: () => assert.fail('Unexpected request') });
+  assert.equal(await client.prepare(), false);
+  assert.equal(status.phase, 'signin');
+  client.connect(windowFor('2026-09-15'));
+  assert.equal(status.phase, 'signin');
+});
+
+test('a sign-in token imports read-only, and a fresh one comes from the popup when asked', async () => {
+  let status, saved, popups = 0;
+  const calls = [];
+  const { createClient } = require('../google-calendar.js');
+  const client = createClient({
+    tokenSource: { available: () => true, request: async () => { popups++; return { accessToken: 'fresh-token', expiresIn: 3600 }; } },
+    onStatus: value => { status = value; }, onEvents: data => { saved = data; },
+    fetcher: async (url, options) => { calls.push(options); return { ok: true, json: async () => ({ items: [timed('a', '2026-09-15T10:00:00-07:00', '2026-09-15T11:00:00-07:00')] }) }; },
+  });
+  assert.equal(await client.prepare(), true);
+  client.useToken({ accessToken: 'sign-in-token', expiresIn: 3600 }, windowFor('2026-09-15'));
+  await flush();
+  assert.equal(calls[0].method, 'GET');
+  assert.equal(calls[0].headers.Authorization, 'Bearer sign-in-token');
+  assert.equal(saved.events.length, 1);
+  assert.equal(popups, 0, 'signing in is enough; no second popup');
+  client.connect(windowFor('2026-09-15'));
+  await flush(); await flush();
+  assert.equal(popups, 1);
+  assert.equal(calls.at(-1).headers.Authorization, 'Bearer fresh-token');
+  assert.equal(status.phase, 'connected');
+  client.disconnect();
+});
+
+test('a refused calendar permission asks to try again instead of failing silently', async () => {
+  let status;
+  const { createClient } = require('../google-calendar.js');
+  const client = createClient({ tokenSource: { available: () => true, request: async () => ({ accessToken: 't', expiresIn: 3600 }) },
+    onStatus: value => { status = value; }, onEvents: () => assert.fail('Unexpected import'), fetcher: async () => ({ ok: false, status: 403 }) });
+  client.useToken({ accessToken: 't', expiresIn: 3600 }, windowFor('2026-09-15'));
+  await flush();
+  assert.equal(status.phase, 'reconnect');
+  assert.equal(client.validToken(), '');
+  client.disconnect();
+});

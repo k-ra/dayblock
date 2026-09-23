@@ -1,3 +1,4 @@
-// Public OAuth web-client ID, shared by the app. Never put a client secret here.
-// See GOOGLE-CALENDAR.md for the one-time Google Cloud setup.
+// Optional. Google Calendar now comes with Google sign-in (see AUTH-HANDBOOK.md),
+// so leave this empty. Only fill it to use a separate, calendar-only OAuth client.
+// A public web-client ID, never a client secret.
 window.DAYBLOCK_CONFIG = { googleClientId: '' };
