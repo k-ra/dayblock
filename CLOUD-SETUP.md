@@ -46,7 +46,7 @@ configuration. [Firebase web configuration](https://firebase.google.com/docs/web
 1. Firebase console → Authentication → Get started → Sign-in method.
 2. Enable **Google**, choose a support email, and save.
 3. Authentication → Settings → Authorized domains: add `k-ra.github.io`.
-   Enter only the hostname, not `https://` or `/dayblock/`.
+   Enter only the hostname, not `https://` or `/xuan-journals/`.
 4. For local testing, also add `localhost` and `127.0.0.1` if you use those
    addresses. Keep the existing Firebase auth-domain entries.
 
@@ -95,7 +95,7 @@ consistently, since each origin has separate browser storage.
 
 ## 6. Import your browser notebooks and verify your phone
 
-1. Open [xuan journals](https://k-ra.github.io/dayblock/).
+1. Open [xuan journals](https://k-ra.github.io/xuan-journals/).
 2. If the entries were in your file preview, open **settings** → data →
    **import**, and select the JSON file from step 1. This combines it
    with any entries already on that website; it does not replace them.

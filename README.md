@@ -51,7 +51,7 @@ notebooks, quick notes). What changed or moved is listed in
 
 ## Try it
 
-[Open it](https://k-ra.github.io/dayblock/) in your browser, or run it locally.
+[Open it](https://k-ra.github.io/xuan-journals/) in your browser, or run it locally.
 There is no build step and no package installation.
 
 ```bash
