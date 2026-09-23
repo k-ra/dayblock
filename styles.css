@@ -696,6 +696,7 @@ dialog::backdrop { background: rgba(51, 51, 51, .25); }
 .stack-where { display: flex; align-items: center; gap: 8px; font: 10px/16px var(--mono); letter-spacing: .14em; color: rgba(0, 0, 0, .65); white-space: nowrap; overflow: hidden; text-transform: uppercase; }
 .stack-where::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--dot); flex: none; }
 .stack-line { display: flex; align-items: center; gap: 12px; font-size: 11px; letter-spacing: .04em; color: rgba(0, 0, 0, .55); min-width: 0; min-height: 28px; }
+.stack-actions { flex-wrap: wrap; column-gap: 10px; row-gap: 2px; }
 .stack-line .saved { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stack-line button, .stack-line select { font-size: 11px; letter-spacing: .08em; color: rgba(0, 0, 0, .6); padding: 2px 0; }
 .stack-line select { border: 0; background: none; cursor: pointer; max-width: 150px; }

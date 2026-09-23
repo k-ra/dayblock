@@ -32,7 +32,8 @@ notebooks, quick notes). What changed or moved is listed in
   Everything you write there goes straight into those books.
 - **Quick note.** In the bottom bar on every page: a clear sticky you write on
   and *put away*. Notes wait in the sticky file, just as you wrote them. Open
-  the file to file a note into a book, move it, restore it, or mark it done.
+  the file to file a note into a book, move it, restore it, mark it done, or
+  delete the sticky. Deleting a filed sticky leaves its notebook entry intact.
 - **AI sorting (optional).** Settings → quick notes → *include quick notes with
   ai*, then connect Claude with an Anthropic API key. Each note's text alone is
   sent when you put it away and is filed into a book (a keyword fallback runs

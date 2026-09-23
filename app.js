@@ -1608,12 +1608,13 @@ function renderStack() {
       actions.push(button(note.done ? 'reopen' : 'done', () => { note.done = !note.done; save(); renderStack(); }));
       if (state.ai.enabled && claudeKey()) actions.push(button('sort', () => sortNote(note)));
     }
+    actions.push(button('delete', () => deleteQuickNote(note), { 'aria-label': filed ? 'Delete sticky; keep its notebook entry' : 'Delete sticky' }));
     card.append(el('div', { class: 'stack-top' }, el('span', { class: 'stack-text' }, note.original), el('span', { class: 'stack-at' }, noteAt(note.at))),
       el('div', { class: 'stack-meta' },
         el('span', { class: 'stack-where' }, whereOf(note)),
         el('div', { class: 'stack-line' }, el('span', { class: 'saved' }, filed ? (changed ? `saved as “${note.stored}”` : 'kept as written') : (note.note || 'as you wrote it')),
           filed ? button(linkOf(note), () => openFiled(note), { class: 'open-link' }) : null),
-        el('div', { class: 'stack-line' }, actions)));
+        el('div', { class: 'stack-line stack-actions' }, actions)));
     inner.append(card);
   });
   const scroll = el('div', { class: 'stack-scroll' }, notes.length ? [inner, el('p', { class: 'stack-count mono' }, `${notes.length} ${notes.length === 1 ? 'sticky' : 'stickies'}`)] : el('p', { class: 'stack-empty' }, 'no quick notes yet'));
@@ -1688,6 +1689,15 @@ function restoreNote(note) {
   Q.unfile(state, note);
   Object.assign(note, { dest: 'catchall', section: 'unsorted', date: '', time: null, stored: note.original, note: 'restored' });
   save(); renderStack(); render();
+}
+function deleteQuickNote(note) {
+  const filed = note.dest !== 'catchall';
+  if (!confirm(filed ? 'Delete this sticky? Its entry in the notebook will stay.' : 'Delete this sticky?')) return;
+  state.quickNotes = state.quickNotes.filter(item => item.id !== note.id);
+  stackSel = null;
+  save();
+  renderStack();
+  if (surface === 'shelf') renderShelf();
 }
 
 /* ================= settings: a spread at the back of the planner ================= */
