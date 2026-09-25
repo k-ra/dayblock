@@ -78,10 +78,12 @@
           return;
         }
         const guest = D.validate(read(guestKey) || blank());
-        const fingerprint = D.canonical(D.portable(guest));
         const receiptKey = `dayblock.imported.v1:${next.uid}`;
         let value = cloud.data || blank(), imported = false;
-        if (storage.getItem(receiptKey) !== fingerprint) imported = await chooseImport(next);
+        // Ask once per account on this device, and only about pages the account
+        // doesn't already have (a browser that was imported before holds copies).
+        const fresh = D.newContent(cloud.data ? D.portable(cloud.data) : null, D.portable(guest));
+        if (!storage.getItem(receiptKey) && D.hasContent(guest) && fresh.any) imported = await chooseImport(next, guest, fresh);
         if (generation !== epoch) return;
         // Read again: typing before the import prompt must not be lost.
         const currentGuest = D.validate(read(guestKey) || guest);

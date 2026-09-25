@@ -94,6 +94,37 @@
     result.settings = clone(a.settings); // Import content, not another device's preferences.
     return validate(result);
   }
+  // Does this copy hold anything someone wrote? Settings and empty scaffolding don't count.
+  function hasContent(data) {
+    if (!object(data)) return false;
+    const days = Object.values(data.days || {}).some(d => d && (d.blocks?.length || d.todos?.length || (typeof d.notes === 'string' ? d.notes.trim() : d.notes?.length) || d.done?.trim?.() || d.title?.trim?.()));
+    const lists = [data.habits, data.trackers?.ideas, data.trackers?.reading, data.trackers?.recipes, data.shopping, data.quickNotes, data.catchall?.items].some(list => Array.isArray(list) && list.length);
+    const stickies = (data.desk?.items || []).some(item => item.type === 'sticky' && item.text);
+    const dated = [data.gratitude, data.moodBar, data.morningPages].some(map => object(map) && Object.keys(map).length);
+    const months = Object.values(data.months || {}).some(m => m?.notes?.trim() || m?.focus?.trim?.());
+    return !!(days || lists || stickies || dated || months);
+  }
+  // What the incoming copy would add: whole entries not already present, by list.
+  // Pages that are already in the account (e.g. imported earlier) don't count.
+  const CONTENT = ['days', 'trackers', 'quickNotes', 'shopping', 'gratitude', 'moodBar', 'morningPages', 'months', 'weeks', 'habits', 'habitLog', 'desk'];
+  function newContent(existing, incoming) {
+    const a = object(existing) ? existing : {}, b = object(incoming) ? incoming : {};
+    const differs = (x, y) => canonical(x ?? null) !== canonical(y ?? null);
+    const dayFilled = d => d && (d.blocks?.length || d.todos?.length || (typeof d.notes === 'string' ? d.notes.trim() : d.notes?.length) || d.done?.trim?.() || d.title?.trim?.());
+    const newItems = (xs = [], ys = []) => (ys || []).filter(y => !(xs || []).some(x => canonical(x) === canonical(y))).length;
+    const counts = {
+      days: Object.entries(b.days || {}).filter(([k, d]) => dayFilled(d) && differs(a.days?.[k], d)).length,
+      ideas: newItems(a.trackers?.ideas, b.trackers?.ideas),
+      books: newItems(a.trackers?.reading, b.trackers?.reading),
+      recipes: newItems(a.trackers?.recipes, b.trackers?.recipes),
+      quickNotes: newItems(a.quickNotes, b.quickNotes),
+    };
+    // Anything else in the notebooks that the account doesn't already hold.
+    const other = CONTENT.some(key => !['days', 'trackers', 'quickNotes'].includes(key) && b[key] !== undefined
+      && canonical(mergeValue(clone(a[key] ?? (Array.isArray(b[key]) ? [] : {})), b[key])) !== canonical(a[key] ?? (Array.isArray(b[key]) ? [] : {})));
+    const any = Object.values(counts).some(Boolean) || (other && hasContent(b));
+    return { ...counts, any };
+  }
   function serialize(data) {
     const payload = JSON.stringify(portable(data));
     if (new TextEncoder().encode(payload).length > 800000) throw new Error('Cloud notebook limit reached (800 KB). Export a backup; your local copy is still safe.');
@@ -104,7 +135,7 @@
     const value = JSON.parse(text);
     return validate(value.format === 'dayblock-backup' ? value.data : value);
   }
-  const api = { clone, validate, portable, canonical, fingerprint, merge, serialize, parseBackup };
+  const api = { clone, validate, portable, canonical, fingerprint, merge, serialize, parseBackup, hasContent, newContent };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DayblockCloudData = api;
 })(typeof window !== 'undefined' ? window : globalThis);

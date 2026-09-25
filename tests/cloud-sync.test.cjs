@@ -137,3 +137,41 @@ test('storage failure during sign-in cannot attach guest edits to the cloud acco
   assert.equal(h.record().data.days['2026-09-21'].notes, 'private cloud');
   assert.equal(h.writes.length, 0);
 });
+
+test('the import question is asked once per account on a device, even after later guest edits', async () => {
+  let asked = 0;
+  const h = harness();
+  const ask = async () => { asked++; return true; };
+  const controller = create({ remote: h.remote, storage: h.storage, getState: h.current, apply: () => {}, blank, chooseImport: ask, status: () => {}, delay: 1 });
+  await controller.switchUser({ uid: 'u1', email: 'a@example.com' });
+  await controller.switchUser(null);
+  h.storage.setItem('spread-planner.v1', JSON.stringify(withNote('written while signed out')));
+  await controller.switchUser({ uid: 'u1', email: 'a@example.com' });
+  assert.equal(asked, 1);
+});
+
+test('an empty browser never asks about importing', async () => {
+  let asked = 0;
+  const h = harness({ guest: blank() });
+  const controller = create({ remote: h.remote, storage: h.storage, getState: h.current, apply: () => {}, blank, chooseImport: async () => { asked++; return true; }, status: () => {}, delay: 1 });
+  await controller.switchUser({ uid: 'u2', email: 'b@example.com' });
+  assert.equal(asked, 0);
+  assert.equal(D.hasContent(blank()), false);
+  assert.equal(D.hasContent(withNote('hi')), true);
+});
+
+test('a browser whose pages are already in the account is not asked about them', async () => {
+  let asked = 0, told = null;
+  const guest = withNote('already imported');
+  const h = harness({ guest, cloud: D.portable(guest) });
+  const controller = create({ remote: h.remote, storage: h.storage, getState: h.current, apply: () => {}, blank, chooseImport: async (u, g, fresh) => { asked++; told = fresh; return false; }, status: () => {}, delay: 1 });
+  await controller.switchUser({ uid: 'u3', email: 'c@example.com' });
+  assert.equal(asked, 0);
+  // Only the genuinely new day is counted when there is something new.
+  const more = D.clone(guest); more.days['2026-09-22'] = { blocks: [], todos: [], notes: 'new here', title: '', done: '' };
+  const h2 = harness({ guest: more, cloud: D.portable(guest) });
+  const c2 = create({ remote: h2.remote, storage: h2.storage, getState: h2.current, apply: () => {}, blank, chooseImport: async (u, g, fresh) => { asked++; told = fresh; return false; }, status: () => {}, delay: 1 });
+  await c2.switchUser({ uid: 'u4', email: 'd@example.com' });
+  assert.equal(asked, 1);
+  assert.equal(told.days, 1);
+});
