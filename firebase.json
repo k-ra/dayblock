@@ -1,0 +1,11 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": ["node_modules", ".git", "*.log"],
+      "predeploy": ["cp \"$PROJECT_DIR/quick-notes.js\" \"$RESOURCE_DIR/shared-quick-notes.js\""]
+    }
+  ],
+  "firestore": { "rules": "firestore.rules" }
+}

@@ -4,12 +4,13 @@ Dayblock imports each visitor's own **primary Google calendar**, read-only.
 Visitors click Connect and authorize their own account. They do not provide
 client IDs, API keys, passwords, or client secrets.
 
-**Calendar access now comes with Google sign-in.** The sign-in popup asks for
-read-only calendar access alongside your account, and the planner imports your
-events right away. The only setup is in the same Google Cloud project as Firebase:
-enable the Google Calendar API, and add the scope
-`https://www.googleapis.com/auth/calendar.events.owned.readonly` under Google Auth
-Platform → Data access. See [AUTH-HANDBOOK.md](AUTH-HANDBOOK.md), step 2.
+**Calendar access is optional and separate from sign-in.** Signing in asks
+Google only for a name and email. Someone who wants their events taps
+**settings → you → google calendar → connect**, and Google asks for read-only
+calendar access then. Setup, in the same Google Cloud project as Firebase: enable
+the Google Calendar API. Leave the calendar scope off Google Auth Platform → Data
+access so the app can be published without verification; see
+[AUTH-HANDBOOK.md](AUTH-HANDBOOK.md), step 2.
 
 Google's access tokens last about an hour. After that, imported events stay, and
 **settings → google calendar → refresh** opens Google's window briefly for a new

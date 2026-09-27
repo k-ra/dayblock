@@ -10,11 +10,11 @@ using it. A new project or web app would not contain your current cloud notebook
 |---|---|---|
 | **Sign in + notebooks synced** between laptop and phone | Firebase console | four values into `firebase-config.js` |
 | **Google Calendar** on the planner (comes with sign-in) | Google Cloud console, same project | nothing |
-| **Claude** sorting your quick notes | Anthropic console, then settings on each device | the key, in the app only |
+| **AI** sorting your quick notes | 50 free sorts after sign-in; optional personal Claude or OpenAI key | a key entered once in settings |
 
 The Firebase values are public by design; security comes from sign-in and the
 database rules. Never paste a client secret, service-account file, or private
-key into the repo. The Claude key is the only secret, and it never enters the repo.
+key into the repo. A personal AI key never enters the repo or notebook backups.
 
 ---
 
@@ -53,56 +53,68 @@ In the [Firebase console](https://console.firebase.google.com/), open your proje
       `users/abc/notebooks/main` should be **denied** when unauthenticated and
       **allowed** when authenticated as UID `abc`.
 
-## 2. Calendar: two switches and your name on the sign-in screen
+## 2. Google's sign-in screen, and opening it to everyone
 
 Firebase made a Google Cloud project behind the scenes, with the same name.
 Open the [Google Cloud console](https://console.cloud.google.com/) and **pick
 that project in the picker at the top**.
 
+- [ ] **Google Auth Platform → Branding:** app name **Dayblock**, your email for
+      support and developer contact. Save. Skip the logo: an uploaded logo makes
+      Google review your branding before anyone else can sign in.
 - [ ] **APIs & Services → Library →** search "Google Calendar API" → **Enable.**
-- [ ] **Google Auth Platform → Branding:** app name **Dayblock**, your
-      email for support and developer contact. Save. (Firebase may have
-      filled in a project ID here; this is the name Google shows when you sign in.)
-- [ ] **Google Auth Platform → Audience:** leave it on **Testing**, then under
-      **Test users** add your Google account (and anyone else who'll sign in).
-- [ ] **Google Auth Platform → Data access → Add or remove scopes:** add
-      `https://www.googleapis.com/auth/calendar.events.owned.readonly` → Update → Save.
+      (Only used by people who tap **connect calendar**.)
+- [ ] **Google Auth Platform → Data access:** if the calendar scope
+      (`…/auth/calendar.events.owned.readonly`) is listed, **remove it** and save.
+      Dayblock asks for it only when someone connects their calendar; keeping it
+      off this list lets you publish without Google's verification.
+- [ ] **Google Auth Platform → Audience → Publish app** (Testing → In
+      production). Now anyone can sign in, without being added as a test user.
 
-That's all the calendar needs. No client ID, and no web addresses to list.
+**Signing in** asks Google only for a name and email, so friends see no
+warning. **Connecting a calendar** is optional (settings → you → google
+calendar → connect). It's a sensitive permission, so until Dayblock is verified
+by Google, people who connect see "Google hasn't verified this app" → **Advanced
+→ continue**, and Google limits unverified calendar access to 100 people.
 
 ## 3. Publish and sign in
 
-- [ ] Tell me when `firebase-config.js` is filled in, and I'll commit and push
-      everything. Give GitHub Pages a minute to update.
+- [ ] Tell me when to commit and push, and give GitHub Pages a minute to update.
 - [ ] Open the live site. Onboarding's **sign in with Google** (or shelf →
       **settings → you → sign in with google**) opens Google's window.
-- [ ] Google may say **"Google hasn't verified this app."** That's expected while
-      the app is in Testing: **Continue**. Make sure the **calendar** box is ticked.
-- [ ] Choose **import browser notebooks.** It combines your browser's notebooks
-      with your account and keeps everything from both.
+- [ ] If this browser has pages your account doesn't, a small card asks whether
+      to bring them in. Answer once; it won't ask again on this browser.
 - [ ] If step 0's backup came from another address: **settings → backups →
       import**.
-- [ ] Your calendar appears on the planner in periwinkle straight away.
+- [ ] For your calendar: **settings → you → google calendar → connect**, and
+      tick the calendar box in Google's window.
 
 **About the hour:** Google's calendar permission lasts about an hour. After
 that your events stay on the page, and **settings → google calendar → refresh**
-pops Google up briefly to pull new ones. Also, sign-in ends when you close the
-tab. If you'd rather stay signed in, tell me and I'll change it; it's one line.
+pops Google up briefly to pull new ones. Sign-in itself stays on in that browser
+until you sign out, so each morning Dayblock just says welcome back and opens today.
 
-## 4. Claude (sorting quick notes)
+**The import question comes once.** The first time you sign in on a device that
+already has pages, a small card asks whether to bring them into your account.
+Whatever you answer, it won't ask again for that account on that device. A brand-new
+browser with nothing in it is never asked.
 
-- [ ] [Anthropic console](https://console.anthropic.com/) → **API keys** → create
-      one named "Dayblock".
-- [ ] **Billing → Limits:** set a small monthly limit. A sorted note costs a
-      fraction of a cent.
-- [ ] On each device: shelf → **settings → quick notes** → turn on **include
-      quick notes with ai** → paste the key → **connect claude →**.
+## 4. AI sorting (quick notes)
+
+- [ ] Sign in with Google, then turn on **include quick notes with ai** under
+      shelf → **settings → quick notes**. The first 50 sorts are free.
+- [ ] Optional: create a personal key in the Anthropic or OpenAI console, set a
+      small provider spending limit, and paste it into **settings → quick notes**.
+      You only need to connect it once for your account.
 - [ ] Test it: put away `call mom at 5`. It should land on today at 5:00 PM, and
       the sticky should say **FILED UNDER PLANNER · TIME BLOCK**.
 
-The key stays in that browser only. It's never synced and never in a backup.
-Only a note's own words are sent, one note at a time. If a device is lost,
-revoke the key in the console.
+The key is stored in a separate Firestore document, not in browser storage or
+the notebook. Firestore rules deny browser reads of that document; the Firebase
+Function reads it to sort a note. Only that note's words are sent to the AI
+provider, one at a time. If needed, revoke the key in the provider console.
+Deploy `functions` and `firestore.rules` from this repo for this flow to work;
+publishing GitHub Pages alone does not deploy them.
 
 ## 5. Final checks
 
@@ -122,11 +134,11 @@ revoke the key in the console.
 | Popup blocked | Allow popups for the site. On a phone, use Safari or Chrome, not an in-app browser. |
 | "Access blocked" or "app not verified" with no Continue button | Your account isn't a **Test user** (step 2), or the calendar scope isn't added. |
 | "Missing or insufficient permissions" | The rules weren't published, or the config points at a different project. |
-| Calendar says "calendar access wasn't allowed" | The calendar box wasn't ticked in Google's window. Tap **refresh** and tick it. |
+| Calendar says "calendar access wasn't allowed" | The calendar box wasn't ticked in Google's window. Tap **connect** again and tick it. |
 | Calendar says "refresh to update your calendar" | The hour ran out. Tap **refresh**. |
 | Calendar 403 even with the box ticked | The Google Calendar API isn't enabled in *this* project (step 2). |
 | "Sync conflict" | Two devices edited at once. Export a backup, then choose **combine both copies**. |
-| Quick notes say "sorted by keywords" | Claude couldn't be reached (key, credit, or offline). The note was still filed; check the key and limit. |
+| Quick notes say "sorted by keywords" | The server or provider could not sort the note, or free sorts are exhausted. The note was still filed; check the key, provider limit, and Firebase Function deployment. |
 
 More background: [CLOUD-SETUP.md](CLOUD-SETUP.md) (how sync behaves, privacy,
 limits) and [GOOGLE-CALENDAR.md](GOOGLE-CALENDAR.md).

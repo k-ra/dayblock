@@ -1,0 +1,12 @@
+{
+  "name": "dayblock-functions",
+  "private": true,
+  "description": "Free quick-note sorting for signed-in Dayblock users.",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.128.0",
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0"
+  }
+}

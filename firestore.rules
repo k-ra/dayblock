@@ -19,6 +19,23 @@ service cloud.firestore {
         && request.resource.data.revision == resource.data.revision + 1;
       allow delete: if false;
     }
+    // Only the server reads the raw key. The owner can replace or remove it.
+    // Never part of the notebook, backups, or exports.
+    match /users/{userId}/secrets/ai {
+      allow read: if false;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['provider', 'key', 'updatedAt'])
+        && request.resource.data.provider in ['anthropic', 'openai']
+        && request.resource.data.key is string
+        && request.resource.data.key.size() <= 400
+        && request.resource.data.updatedAt == request.time;
+    }
+    // Free sorts used so far. Readable by its owner; only Dayblock's server writes it.
+    match /users/{userId}/usage/ai {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
     // Everything else is private/disabled by default.
     match /{document=**} { allow read, write: if false; }
   }

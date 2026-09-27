@@ -5,7 +5,7 @@
 
 const STORAGE_KEY = 'spread-planner.v1';
 const SNAPSHOT_KEY = 'dayblock.before-redesign.v1';
-const CLAUDE_KEY = 'dayblock.claude-key.v1';   // this device only; never synced or exported
+const AI_KEY = 'dayblock.ai-key.v1';           // Legacy device key, migrated to the account once; never used for sorting here.
 let account = null;
 const DAY_START = 8;      // 8 am
 const DAY_END = 24;       // midnight
@@ -133,7 +133,9 @@ function migrate(s) {
   s.user ||= { name: '' };
   s.shelf ||= {};
   for (const key of PILE) s.shelf[key] ??= true;
-  s.ai ||= { enabled: false };
+  s.ai ||= {};
+  // AI sorting is on unless someone switched it off themselves (free sorts cover it).
+  if (!s.ai.chosen) s.ai.enabled = true;
   s.onboarded ??= false;
   s.favoriteColor ||= '';
   s.googleCalendar ||= { events: [], updatedAt: null };
@@ -196,7 +198,34 @@ const gridLayouts = new WeakMap();
 const calendarEvents = key => window.DayblockCalendar.eventsOnDate(state.googleCalendar.events, key);
 const calendarWindow = () => window.DayblockCalendar.windowFor(cursor);
 const refreshCalendar = () => calendarClient?.refresh(calendarWindow());
-const claudeKey = () => { try { return localStorage.getItem(CLAUDE_KEY) || ''; } catch (_) { return ''; } };
+// Older versions saved a raw key here. Migrate it once after sign-in, then erase it.
+function storedAiKey() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AI_KEY) || 'null');
+    if (saved?.key) return saved;
+    // Earlier versions kept a Claude key on its own.
+    const older = localStorage.getItem('dayblock.claude-key.v1');
+    if (older) return { provider: 'anthropic', key: older, account: null };
+  } catch (_) { /* no key */ }
+  return null;
+}
+let connectedAi = null; // Provider only; the raw key stays in the locked Firestore document.
+function aiKey() {
+  return connectedAi?.account === accountStatus.user?.uid ? connectedAi : null;
+}
+function clearLegacyAiKey() {
+  try { localStorage.removeItem(AI_KEY); localStorage.removeItem('dayblock.claude-key.v1'); } catch (_) { /* private browsing */ }
+}
+const aiName = provider => Q.PROVIDERS[provider] || 'ai';
+// Free sorts left for the signed-in person (null until known).
+let freeLeft = null;
+// With AI on, every note is sorted on the server, then by keywords if unavailable.
+const canSort = () => state.ai.enabled;
+async function refreshFreeSorts() {
+  if (!account?.free.available()) { freeLeft = null; return; }
+  try { const { used, free } = await account.free.usage(); freeLeft = Math.max(0, free - used); } catch (_) { /* unknown until the next sort */ }
+  if (settingsOpen) renderSettings();
+}
 
 // Unchecked todos from earlier days roll forward to today, keeping their origin.
 function carryOver() {
@@ -1551,8 +1580,20 @@ const noteAt = iso => {
 function whereOf(note) {
   if (note.sorting) return 'SORTING…';
   if (note.dest === 'catchall') return 'STICKY FILE · NOT FILED YET';
-  const when = note.date ? `${dayLabel(note.date)}${Number.isFinite(note.time) && note.section === 'time block' ? ` · ${fmtTime(note.time)} ${note.time < 12 ? 'AM' : 'PM'}` : ''}` : '';
+  const at = Number.isFinite(note.time) && note.section === 'time block' ? `${fmtTime(note.time)} ${note.time < 12 ? 'AM' : 'PM'}` : '';
+  const count = note.ref?.items?.length;
+  const when = count ? [repeatLabel(note), at, `${count} ${count === 1 ? 'DAY' : 'DAYS'}`].filter(Boolean).join(' · ')
+    : note.date ? [dayLabel(note.date), at].filter(Boolean).join(' · ') : '';
   return `FILED UNDER ${[BOOKS[note.dest].name, note.section, when].filter(Boolean).join(' · ')}`.toUpperCase();
+}
+// "every wed until dec 31", "every other day from sep 24"
+function repeatLabel(note) {
+  const r = note.repeat;
+  if (!r) return '';
+  const every = r.interval > 1 ? (r.interval === 2 ? 'every other' : `every ${r.interval}`) : 'every';
+  const what = r.frequency === 'daily' ? 'day' : r.frequency === 'monthly' ? 'month' : r.weekdays?.length ? r.weekdays.join(', ') : 'week';
+  const last = note.ref?.items?.at(-1)?.day;
+  return `${every} ${what}${last ? ` until ${shortDate(last)}` : ''}`;
 }
 function linkOf(note) {
   if (note.dest === 'planner') return `open ${dayLabel(note.date || todayKey()).toLowerCase()} ↗`;
@@ -1606,7 +1647,7 @@ function renderStack() {
     if (filed) actions.push(button('restore', () => restoreNote(note)));
     else {
       actions.push(button(note.done ? 'reopen' : 'done', () => { note.done = !note.done; save(); renderStack(); }));
-      if (state.ai.enabled && claudeKey()) actions.push(button('sort', () => sortNote(note)));
+      if (canSort()) actions.push(button('sort', () => sortNote(note)));
     }
     actions.push(button('delete', () => deleteQuickNote(note), { 'aria-label': filed ? 'Delete sticky; keep its notebook entry' : 'Delete sticky' }));
     card.append(el('div', { class: 'stack-top' }, el('span', { class: 'stack-text' }, note.original), el('span', { class: 'stack-at' }, noteAt(note.at))),
@@ -1655,24 +1696,44 @@ function putAway() {
   state.quickDraft = ''; quickText.value = '';
   closeQuickNote(); save();
   toast('put on the stack');
-  if (state.ai.enabled && claudeKey()) sortNote(note);
+  if (canSort()) sortNote(note);
   else if (surface === 'shelf') render();
 }
-// Claude first; the keyword fallback only when Claude fails. The original words are always kept.
+// The Firebase Function chooses the account's key or a free sort. No provider key enters this request.
 async function sortNote(note) {
   note.sorting = true;
   if (!stackEl.hidden) renderStack();
   let result, by;
-  try { result = await Q.classifyWithClaude(note.original, { apiKey: claudeKey(), now: new Date() }); by = 'sorted by claude'; }
-  catch (error) { console.warn('Claude sorting failed; using keywords.', error); result = Q.heuristic(note.original, new Date()); by = 'sorted by keywords'; }
+  try {
+    if (!account?.free.available()) { result = Q.heuristic(note.original, new Date()); by = 'sorted by keywords'; }
+    else {
+      const reply = await account.free.sort(note.original, todayKey());
+      result = reply.result; by = `sorted by ${aiName(reply.provider || 'anthropic')}`;
+      if (!reply.personal) {
+        freeLeft = reply.left;
+        if (reply.left === 0) toast('that was your last free sort · add a key in settings');
+        else if (reply.left <= 5) toast(`${reply.left} free ${reply.left === 1 ? 'sort' : 'sorts'} left`);
+      }
+    }
+  } catch (error) {
+    if (/resource-exhausted/.test(error?.code || '')) {
+      if (/next month/.test(error.message || '')) toast('free sorting is resting until next month');
+      else { freeLeft = 0; toast('free sorts used up · add a key in settings'); }
+    }
+    else console.warn('AI sorting failed; using keywords.', error);
+    result = Q.heuristic(note.original, new Date()); by = 'sorted by keywords';
+  }
   delete note.sorting;
   if (!state.quickNotes.includes(note)) return;
+  // Once, the first time a note goes to AI: say so, and where to turn it off.
+  if (by !== 'sorted by keywords' && !state.ai.told) { state.ai.told = true; setTimeout(() => toast(`${by} · turn off in settings`), 1900); }
   fileNote(note, result, by);
 }
 function fileNote(note, r, by) {
   Q.unfile(state, note);
   const section = r.book === 'planner' && r.section === 'time block' && !Number.isFinite(r.time) ? 'todo' : r.section;
-  Object.assign(note, { dest: r.book, section, date: r.date || '', time: Number.isFinite(r.time) ? r.time : null, duration: r.duration || 0, stored: r.text || note.original, note: by });
+  const repeat = r.book === 'planner' && r.repeat?.frequency && r.repeat.frequency !== 'none' ? r.repeat : null;
+  Object.assign(note, { dest: r.book, section, date: r.date || '', time: Number.isFinite(r.time) ? r.time : null, duration: r.duration || 0, repeat, stored: r.text || note.original, note: by });
   if (['planner', 'gratitude', 'morning'].includes(note.dest) && !note.date) note.date = todayKey();
   if (!['planner', 'gratitude', 'morning'].includes(note.dest)) note.date = '';
   note.ref = Q.file(state, note, { uid, today: todayKey(), color: state.settings.color });
@@ -1682,7 +1743,7 @@ function fileNote(note, r, by) {
 }
 function moveNote(note, bookKey, section) {
   const guess = Q.heuristic(note.original, new Date());
-  fileNote(note, { book: bookKey, section, date: note.date || guess.date, time: note.time ?? guess.time, duration: note.duration || guess.duration,
+  fileNote(note, { book: bookKey, section, date: note.date || guess.date, time: note.time ?? guess.time, duration: note.duration || guess.duration, repeat: note.repeat || guess.repeat,
     text: note.dest === 'catchall' && guess.book === bookKey ? guess.text : note.stored }, 'moved by you');
 }
 function restoreNote(note) {
@@ -1736,7 +1797,7 @@ function renderSettings() {
     settingsBook.replaceChildren(card);
     return;
   }
-  const name = editable('span', '', state.user.name, 'your name', v => { state.user.name = v; save(); }, { label: 'Your name' });
+  const name = editable('span', '', state.user.name, 'your name', v => { state.user.name = v; save(); rememberWelcome(v); }, { label: 'Your name' });
   name.style.fontWeight = '500';
   const accountNote = user
     ? 'signed in with google. your notebooks save to your account and to this device.'
@@ -1758,9 +1819,9 @@ function renderSettings() {
         user ? opt('sign out', false, () => $('#cloudSignOut').click(), { action: true }) : null,
       ], { note: accountNote }),
       ...setRow('google calendar', [
-        cal.phase === 'unconfigured' ? el('span', { class: 'ink-3' }, 'not set up') : cal.phase === 'signin' || cal.phase === 'unavailable' ? el('span', { class: 'ink-3' }, 'comes with sign-in') : opt(cal.phase === 'connected' ? 'refresh' : calConnected ? 'reconnect' : 'connect', calConnected, connectCalendar, { disabled: ['loading', 'syncing', 'unavailable'].includes(cal.phase) }),
+        cal.phase === 'unconfigured' ? el('span', { class: 'ink-3' }, 'not set up') : cal.phase === 'signin' || cal.phase === 'unavailable' ? el('span', { class: 'ink-3' }, 'sign in first') : opt(cal.phase === 'connected' ? 'refresh' : calConnected ? 'reconnect' : 'connect', calConnected, connectCalendar, { disabled: ['loading', 'syncing', 'unavailable'].includes(cal.phase) }),
         calConnected ? opt('disconnect', false, disconnectCalendar, { action: true }) : null,
-      ]),
+      ], { note: 'optional and read-only. google asks for calendar access separately, and may say the app isn’t verified yet.' }),
       ...setRow('backups', [opt('export .json', false, () => $('#exportBackup').click(), { action: true }), opt('import', false, () => $('#importBackup').click(), { action: true })],
         { note: 'imports keep your existing entries.' })));
   settingsBook.className = `book settings-book ${phone.matches ? 'single stacked' : 'spread'}`;
@@ -1814,22 +1875,80 @@ function shelfPicker() {
   return [pile, el('p', { class: 'set-note' }, `${on} of ${PILE.length} on the shelf. tap a book to put it away or bring it back; nothing inside is lost.`)];
 }
 function quickNoteSettings() {
-  const ai = state.ai.enabled, key = claudeKey();
-  const rows = [...setRow('include quick notes with ai', [toggleOpt(ai, setAndRender(() => { state.ai.enabled = !ai; }))], {
-    note: ai ? 'on: each quick note is read by claude and filed into the right book. the original words are always kept in the sticky file.'
+  const ai = state.ai.enabled, key = aiKey(), signedIn = !!account?.secrets.available();
+  const rows = [...setRow('include quick notes with ai', [toggleOpt(ai, setAndRender(() => { state.ai.enabled = !ai; state.ai.chosen = true; }))], {
+    note: ai ? 'on: each quick note is read by ai and filed into the right book. the original words are always kept in the sticky file.'
       : 'off: quick notes stay analog. they wait in the sticky file, just as you wrote them, until you file them yourself.' })];
   if (!ai) return rows;
+  if (!key && account?.free.available()) {
+    rows.push(...setRow('free sorts', [el('span', { class: 'mono', style: 'color:var(--ink)' }, freeLeft == null ? '…' : freeLeft ? `${freeLeft} OF 50 LEFT` : 'ALL 50 USED')],
+      { note: freeLeft === 0 ? 'you’ve used dayblock’s 50 free sorts. add your own key below to keep sorting; notes still file by keywords meanwhile.'
+        : 'dayblock pays for your first 50 sorts, using claude. after that, add your own claude or openai key below.' }));
+  }
   if (key) {
-    rows.push(...setRow('claude · connected', [opt('disconnect', false, () => { try { localStorage.removeItem(CLAUDE_KEY); } catch (_) { /* nothing stored */ } render(); }, { action: true })],
-      { note: 'only the text of a quick note is sent, one at a time, when you put it away. nothing else in your books leaves this device. the key stays on this device and is never synced or exported.' }));
+    rows.push(...setRow(`${aiName(key.provider)} · connected`, [opt('disconnect', false, disconnectAi, { action: true })],
+      { note: 'saved to your account. quick notes are sorted on the server; the key is never in this browser’s storage, backups, or exports.' }));
+  } else if (!signedIn) {
+    rows.push(...setRow('your own ai key', accountStatus.available ? [opt('sign in with google', true, () => account.signIn())] : [],
+      { note: accountStatus.available ? 'sign in for 50 free sorts, or to keep a claude or openai key in your account. until then, notes file by keywords.'
+        : 'open the live site to sign in and connect a key. local notes still file by keywords.' }));
   } else {
-    const input = el('input', { type: 'password', class: 'key', placeholder: 'anthropic api key', 'aria-label': 'Anthropic API key', autocomplete: 'off' });
-    const connect = () => { const v = input.value.trim(); if (!v) { input.focus(); return; } try { localStorage.setItem(CLAUDE_KEY, v); } catch (_) { toast('could not save the key'); } render(); };
+    const input = el('input', { type: 'password', class: 'key', placeholder: 'claude or openai key', 'aria-label': 'Claude or OpenAI API key', autocomplete: 'off' });
+    const connect = () => connectAi(input.value, input);
     input.onkeydown = e => { if (e.key === 'Enter') connect(); };
-    rows.push(...setRow('claude', [input, opt('connect claude →', true, connect)],
-      { note: 'paste an anthropic api key to let claude sort. it stays on this device only. until then, quick notes stay in the sticky file.' }));
+    rows.push(...setRow('ai key', [input, opt('connect →', true, connect)],
+      { note: 'paste a claude key (starts sk-ant-) or an openai key (starts sk-). it is saved to your account, not this browser.' }));
   }
   return rows;
+}
+async function connectAi(value, input) {
+  const key = (value || '').trim(), provider = Q.providerOf(key);
+  if (!key) { input?.focus(); return; }
+  if (!provider) { toast('that doesn’t look like a claude or openai key'); input?.focus(); return; }
+  const secrets = account?.secrets;
+  if (!secrets?.available()) { toast('sign in before adding a key'); return; }
+  const accountId = secrets.uid();
+  ++aiSyncEpoch;
+  try {
+    await secrets.save({ provider, key });
+    if (accountStatus.user?.uid !== accountId) return;
+    connectedAi = { provider, account: accountId };
+    clearLegacyAiKey();
+    if (input) input.value = '';
+  } catch (_) { toast('could not save the key to your account; please try again'); return; }
+  render();
+}
+async function disconnectAi() {
+  if (!account?.secrets.available()) return;
+  const accountId = account.secrets.uid();
+  ++aiSyncEpoch;
+  try { await account.secrets.clear(); }
+  catch (_) { toast('could not disconnect; please try again'); return; }
+  if (accountStatus.user?.uid === accountId) connectedAi = null;
+  render();
+}
+// Signing in migrates an older device key once; thereafter only provider metadata is read.
+let aiSyncEpoch = 0;
+async function syncAiKey(user) {
+  const epoch = ++aiSyncEpoch;
+  const local = storedAiKey();
+  connectedAi = null;
+  if (!user) { if (local?.account) clearLegacyAiKey(); return; }
+  const secrets = account?.secrets;
+  if (!secrets?.available()) return;
+  try {
+    const saved = await secrets.load();
+    if (epoch !== aiSyncEpoch || accountStatus.user?.uid !== user.uid) return;
+    if (saved) { connectedAi = { provider: saved.provider, account: user.uid }; clearLegacyAiKey(); }
+    else if (local?.key && (!local.account || local.account === user.uid)) {
+      await secrets.save({ provider: local.provider, key: local.key });
+      if (epoch !== aiSyncEpoch || accountStatus.user?.uid !== user.uid) return;
+      connectedAi = { provider: local.provider, account: user.uid };
+      clearLegacyAiKey();
+    }
+    else if (local?.account && local.account !== user.uid) clearLegacyAiKey();
+  } catch (_) { /* offline: retry on the next sign-in */ }
+  if (settingsOpen) renderSettings();
 }
 function connectCalendar() {
   if (!calendarClient) return;
@@ -1841,7 +1960,14 @@ function disconnectCalendar() {
   calendarClient?.disconnect(); render();
 }
 
-/* ================= onboarding: the post-it ================= */
+/* ================= arriving: the first time, or welcome back ================= */
+// The device remembers it has met you, whichever notebook copy is open, so the
+// post-it appears once. Every visit after that is a quick hello, then the planner.
+const WELCOME_KEY = 'dayblock.welcomed.v1';
+const welcomed = () => { try { return JSON.parse(localStorage.getItem(WELCOME_KEY) || 'null'); } catch (_) { return null; } };
+const rememberWelcome = name => { try { localStorage.setItem(WELCOME_KEY, JSON.stringify({ name: (name || '').trim() })); } catch (_) { /* the welcome simply shows again */ } };
+const STAY_LOCAL = 'dayblock.stay-local.v1';     // chose "stay on this device" here
+let onboarding = false, greeting = false, greetingRun = 0, nudgedOnOpen = false;
 const onboardEl = $('#onboarding');
 const onboard = { name: '', local: false, picked: '' };
 function renderOnboarding() {
@@ -1857,13 +1983,15 @@ function renderOnboarding() {
   const tasks = [
     el('div', { class: `task${named ? ' done' : ''}` }, box(named), el('span', { class: 'text' }, 'write your name')),
     button([box(stored), el('span', { class: 'text' }, 'sign in with Google')], () => { if (accountStatus.available && !signed) account.signIn(); else if (!accountStatus.available) { onboard.local = true; renderOnboarding(); } }, { class: `task${stored ? ' done' : ''}`, disabled: stored }),
-    !signed && !onboard.local ? button(accountStatus.available ? 'or keep it on this device' : 'sign-in isn’t set up yet · keep it on this device', () => { onboard.local = true; renderOnboarding(); }, { class: 'aside-link' }) : null,
+    // Sign-in is the easy default: say what it brings, keep "skip" small.
+    !signed && !onboard.local && accountStatus.available ? el('p', { class: 'perk' }, 'your pages on every device, plus 50 free ai sorts') : null,
+    !signed && !onboard.local ? button(accountStatus.available ? 'skip for now · this device only' : 'sign-in isn’t set up yet · keep it on this device', () => { onboard.local = true; renderOnboarding(); }, { class: 'aside-link' }) : null,
     el('div', { class: `task${picked ? ' done' : ''}` }, box(picked), el('span', { class: 'text' }, 'favorite color'),
       el('span', { class: 'dots' }, ['butter', 'rose', 'seafoam', 'peri', 'clay', 'moss'].map(c => button('', () => { onboard.picked = c; renderOnboarding(); }, { class: `hl-${c}`, 'aria-pressed': String(onboard.picked === c), 'aria-label': PEN_NAMES[c] })))),
     button([box(false), el('span', { class: 'text' }, 'start with your shelf →')], finishOnboarding, { class: 'task', disabled: !ready, style: ready ? '' : 'cursor:default' }),
   ];
   // Keep the same post-it so it drops in once, not on every keystroke.
-  let postit = onboardEl.querySelector('.postit');
+  let postit = onboardEl.querySelector('.postit:not(.welcome)');
   if (!postit) { postit = el('div', { class: 'postit', role: 'dialog', 'aria-label': 'Welcome to Dayblock' }); onboardEl.replaceChildren(postit); }
   postit.replaceChildren(el('div', { class: 'hi' }, el('span', {}, 'hi, I am'), nameInput), ...tasks.filter(Boolean));
   if (focused || !onboard.name) { nameInput.focus(); nameInput.setSelectionRange(nameInput.value.length, nameInput.value.length); }
@@ -1874,9 +2002,102 @@ function finishOnboarding() {
   state.settings.color = onboard.picked;
   state.onboarded = true;
   save();
+  rememberWelcome(state.user.name);
+  onboarding = false;
   onboardEl.classList.add('leaving');
   arriving = true; surface = 'shelf'; render();
   setTimeout(() => { onboardEl.hidden = true; onboardEl.classList.remove('leaving'); }, 820);
+}
+// Signing in on a new device to an account that already knows you: no post-it
+// chores, just hello and the shelf.
+function welcomeReturningAccount() {
+  onboarding = false;
+  state.onboarded = true;
+  rememberWelcome(state.user.name);
+  showWelcomeBack({ to: 'shelf' });
+}
+// Welcome notes come in a different highlighter each time.
+const welcomeTint = () => ['butter', 'rose', 'seafoam', 'peri', 'clay', 'moss'][Math.floor(Math.random() * 6)];
+// A quick hello on the desk, then straight in. Tap anywhere to skip it.
+function showWelcomeBack({ to = 'planner' } = {}) {
+  const name = state.user.name || welcomed()?.name || '';
+  const now = new Date();
+  greeting = true;
+  surface = to;
+  if (to === 'planner') { cursor = todayKey(); state.settings.mode = 'day'; }
+  render();
+  onboardEl.hidden = false;
+  onboardEl.classList.add('greeting');
+  onboardEl.classList.remove('leaving');
+  onboardEl.replaceChildren(el('div', { class: `postit welcome tinted hl-${welcomeTint()}`, role: 'status' },
+    el('p', { class: 'hello' }, name ? ['welcome back, ', el('strong', {}, name)] : 'welcome back'),
+    el('p', { class: 'mono when' }, `${DOW[now.getDay()]} · ${now.getDate()} ${MONTHS[now.getMonth()]}`.toUpperCase()),
+    el('p', { class: 'quiet' }, to === 'planner' ? 'opening today…' : 'here’s your shelf')));
+  const run = ++greetingRun;
+  const leave = () => { if (run === greetingRun) closeGreeting(); };
+  onboardEl.onclick = leave;
+  setTimeout(leave, 1500);
+}
+function closeGreeting() {
+  const run = ++greetingRun;
+  onboardEl.classList.add('leaving');
+  setTimeout(() => { if (run !== greetingRun) return; onboardEl.hidden = true; onboardEl.classList.remove('leaving', 'greeting'); onboardEl.onclick = null; greeting = false; }, 820);
+}
+// A browser that knows you but isn't signed in: say so, and offer sign-in.
+function signInNudge() {
+  if (onboarding || accountStatus.user || !accountStatus.available) return;
+  try { if (localStorage.getItem(STAY_LOCAL)) return; } catch (_) { /* ask anyway */ }
+  const name = state.user.name || welcomed()?.name || '';
+  greetingRun++;
+  greeting = true;
+  onboardEl.hidden = false;
+  onboardEl.classList.add('greeting');
+  onboardEl.classList.remove('leaving');
+  onboardEl.onclick = null;
+  // A two-item to-do list: tap one and its little hole fills in, then it happens.
+  const choose = (item, act) => {
+    if (item.closest('.hole-list').classList.contains('chosen')) return;
+    item.closest('.hole-list').classList.add('chosen');
+    item.classList.add('filled');
+    item.setAttribute('aria-checked', 'true');
+    setTimeout(act, 420);
+  };
+  const hole = (text, act) => {
+    const item = el('button', { type: 'button', class: 'hole', role: 'checkbox', 'aria-checked': 'false' }, el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'text' }, text));
+    item.onclick = () => choose(item, act);
+    return el('li', {}, item);
+  };
+  onboardEl.replaceChildren(el('div', { class: `postit welcome tinted hl-${welcomeTint()}`, role: 'dialog', 'aria-label': 'Sign in' },
+    el('p', { class: 'hello' }, name ? ['welcome back, ', el('strong', {}, name)] : 'welcome back'),
+    el('p', { class: 'sub' }, 'you’re signed out here. sign in for your pages everywhere and 50 free ai sorts.'),
+    el('ul', { class: 'hole-list' },
+      hole('sign in with Google', () => { closeGreeting(); account.signIn(); }),
+      hole('stay on this device', () => { try { localStorage.setItem(STAY_LOCAL, '1'); } catch (_) { /* asks again next time */ } closeGreeting(); }))));
+  onboardEl.querySelector('button').focus();
+}
+// The one import question: clear, once per account on this device, and only
+// about pages that aren't already in the account.
+function describePages(fresh) {
+  const n = (count, one, many) => count ? `${count} ${count === 1 ? one : many}` : '';
+  const parts = [n(fresh.days, 'day of plans', 'days of plans'), n(fresh.ideas, 'idea', 'ideas'), n(fresh.books, 'book', 'books'),
+    n(fresh.recipes, 'recipe', 'recipes'), n(fresh.quickNotes, 'quick note', 'quick notes')].filter(Boolean);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] || 'a few pages';
+}
+function askImport(user, guest, fresh = { any: true }) {
+  return new Promise(resolve => {
+    const layer = el('div', { class: 'import-layer' });
+    const answer = yes => { layer.remove(); resolve(yes); };
+    const card = el('div', { class: 'postit import-card', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Bring this browser’s pages into your account?' },
+      el('p', { class: 'mono label' }, 'one quick thing'),
+      el('p', {}, `this browser has ${describePages(fresh)} that ${fresh.days + fresh.ideas + fresh.books + fresh.recipes + fresh.quickNotes === 1 ? 'isn’t' : 'aren’t'} in your account yet.`),
+      el('p', {}, `add them to ${user.email || 'your account'}? nothing already in your account is replaced, and you won’t be asked again on this device.`),
+      el('div', { class: 'import-actions' },
+        button('yes, bring them', () => answer(true), { class: 'pill on' }),
+        button('no, just my account', () => answer(false), { class: 'pill' })));
+    layer.append(card);
+    document.body.append(layer);
+    card.querySelector('button').focus();
+  });
 }
 
 /* ================= the bottom bar ================= */
@@ -1947,7 +2168,7 @@ function render() {
   b.dataset.desk = state.settings.desk === 'paper grey' ? '' : state.settings.desk;
   b.dataset.ruling = state.settings.ruling;
   document.querySelector('meta[name="theme-color"]').content = getComputedStyle(b).getPropertyValue('--desk').trim() || '#f3f2ee';
-  if (!state.onboarded) renderOnboarding(); else if (!onboardEl.classList.contains('leaving')) onboardEl.hidden = true;
+  if (onboarding) renderOnboarding(); else if (!greeting && !onboardEl.classList.contains('leaving')) onboardEl.hidden = true;
   renderBar();
   if (settingsOpen) renderSettings();
   const shelfOpen = surface === 'shelf';
@@ -2014,7 +2235,11 @@ window.addEventListener('resize', () => {
   }, 150);
 });
 carryOver();
-render();
+// First time on this device: the post-it. Otherwise: hello, then the planner.
+if (welcomed() || state.onboarded) {
+  if (!welcomed()) rememberWelcome(state.user.name);
+  showWelcomeBack();
+} else { onboarding = true; render(); }
 const calendarClientId = window.DAYBLOCK_CONFIG?.googleClientId || '';
 calendarClient = window.DayblockCalendar.createClient({
   clientId: calendarClientId,
@@ -2037,12 +2262,20 @@ calendarClient.prepare();
 account = window.DayblockAccount.create({
   getState: () => state,
   blank: () => migrate({ ...defaultState(), onboarded: true }),
+  askImport,
   onReport(status) {
-    const changed = !!status.user !== !!accountStatus.user || status.available !== accountStatus.available;
+    const changed = status.user?.uid !== accountStatus.user?.uid || status.available !== accountStatus.available;
     accountStatus = { ...accountStatus, ...status };
     if (!changed) return;
     calendarClient?.prepare();
-    if (!state.onboarded) renderOnboarding();
+    syncAiKey(status.user);
+    refreshFreeSorts();
+    if (status.user) { try { localStorage.removeItem(STAY_LOCAL); } catch (_) { /* fine */ } }
+    // Only as Dayblock opens; signing out on purpose later shouldn't ask again.
+    else if (status.phase === 'local' && !onboarding && welcomed() && !nudgedOnOpen && performance.now() < 20000) { nudgedOnOpen = true; signInNudge(); }
+    // An account that already knows your name skips the post-it chores.
+    if (onboarding && status.user && state.user.name) welcomeReturningAccount();
+    else if (onboarding) renderOnboarding();
     else if (settingsOpen && !document.activeElement?.isContentEditable) renderSettings();
   },
   apply(data) {

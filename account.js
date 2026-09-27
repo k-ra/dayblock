@@ -1,6 +1,6 @@
 /* Quiet bookshelf account controls; local-only mode works without Firebase. */
 window.DayblockAccount = {
-  create({ getState, apply, blank, onReport = () => {} }) {
+  create({ getState, apply, blank, onReport = () => {}, askImport = null }) {
     const D = window.DayblockCloudData;
     const $ = selector => document.querySelector(selector);
     const dialog = $('#accountDialog'), status = $('#accountStatus');
@@ -91,17 +91,22 @@ window.DayblockAccount = {
         remote.onCalendarToken(token => calendarToken(token));
         sync = window.DayblockCloudSync.create({ remote, storage: localStorage, getState, apply, blank, status: report,
           canApply: () => !document.activeElement?.isContentEditable && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName) && !document.body.classList.contains('dragging') && !document.querySelector('dialog[open]'),
-          chooseImport: user => new Promise(resolve => {
+          chooseImport: (user, guest, fresh) => askImport ? askImport(user, guest, fresh) : new Promise(resolve => {
             importChoice?.(false); importChoice = resolve;
             $('#cloudImportText').textContent = `import this browser’s notebooks into ${user.email || 'your account'}? Existing cloud entries will be kept. Different versions of an entry are kept as separate copies.`;
             $('#cloudImportChoice').hidden = false;
             if (!dialog.open) dialog.showModal();
           }),
         });
+        let settled = false;
         remote.onAuth(user => {
-          authUser = user;
+          // An anonymous ID (for free sorts) is still "signed out" for notebooks.
+          const real = user && !user.isAnonymous ? user : null;
+          if (settled && (real?.uid || null) === (authUser?.uid || null)) return;
+          settled = true;
+          authUser = real;
           importChoice?.(false); importChoice = null; $('#cloudImportChoice').hidden = true;
-          sync.switchUser(user);
+          sync.switchUser(real);
         });
       } catch (error) { message('Cloud sign-in could not load. Check your connection and Firebase configuration. Local notebooks still work.'); }
     }
@@ -112,12 +117,26 @@ window.DayblockAccount = {
     window.addEventListener('beforeunload', event => { if (sync?.pending()) { event.preventDefault(); event.returnValue = ''; } });
     setInterval(() => { if (!document.hidden) sync?.refresh(); }, 60000);
     start();
+    // The AI key follows the signed-in account.
+    const secrets = {
+      available: () => !!remote && !!authUser,
+      uid: () => authUser?.uid || null,
+      load: () => remote.readSecret(authUser.uid),
+      save: value => remote.writeSecret(authUser.uid, value),
+      clear: () => remote.deleteSecret(authUser.uid),
+    };
+    // Free sorts need a Google sign-in: one allowance per person.
+    const free = {
+      available: () => !!remote && !!authUser,
+      sort: (text, today) => remote.freeSort(text, today),
+      usage: () => remote.freeSortsUsed(),
+    };
     const calendar = {
       available: () => !!remote && !!authUser,
       request: () => remote.calendarToken(),
       onToken: callback => { calendarToken = callback; },
     };
-    return { calendar, open: () => dialog.showModal(), signIn: () => $('#cloudSignIn').click(), available: () => !!remote, save(data) {
+    return { calendar, secrets, free, open: () => dialog.showModal(), signIn: () => $('#cloudSignIn').click(), available: () => !!remote, save(data) {
       try { if (sync) sync.save(data); else localStorage.setItem('spread-planner.v1', JSON.stringify(data)); }
       catch (error) { message('Could not save on this device. Export a backup now before closing the page.'); $('#accountNotice').hidden = false; $('#accountNotice').textContent = 'account · storage full'; }
     } };

@@ -58,9 +58,9 @@ configuration. [Firebase web configuration](https://firebase.google.com/docs/web
    addresses. Keep the existing Firebase auth-domain entries.
 
 The app uses a Google popup. Allow popups when prompted. On a phone, use the
-live site in Safari or Chrome rather than an embedded preview. Sign-in persists
-through reloads in this tab; closing the tab ends the session. Signing in again
-restores that account's notebooks. [Google sign-in setup](https://firebase.google.com/docs/auth/web/google-signin),
+live site in Safari or Chrome rather than an embedded preview. Sign-in stays on
+in that browser until you sign out (settings → you → sign out), so reopening
+Dayblock goes straight to your notebooks. Use sign out on shared computers. [Google sign-in setup](https://firebase.google.com/docs/auth/web/google-signin),
 [session persistence](https://firebase.google.com/docs/auth/web/auth-state-persistence).
 
 ## 4. Create and secure Firestore — do not skip the rules
@@ -121,7 +121,7 @@ consistently, since each origin has separate browser storage.
 ## What sync does (and does not do)
 
 - Saves every notebook (planner, ideas, book log, recipes, morning pages,
-  gratitude), habits, quick notes, and stationery. Not the Claude API key.
+  gratitude), habits, quick notes, and stationery. Not a personal AI key.
 - Autosaves after a short typing pause. Refreshes when returning to the tab,
   on reconnect, and about once a minute while visible. This is not live
   collaborative editing; finish syncing before switching devices.

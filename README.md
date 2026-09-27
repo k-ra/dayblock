@@ -35,10 +35,10 @@ notebooks, quick notes). What changed or moved is listed in
   the file to file a note into a book, move it, restore it, mark it done, or
   delete the sticky. Deleting a filed sticky leaves its notebook entry intact.
 - **AI sorting (optional).** Settings → quick notes → *include quick notes with
-  ai*, then connect Claude with an Anthropic API key. Each note's text alone is
-  sent when you put it away and is filed into a book (a keyword fallback runs
-  only if Claude fails). The key stays on that device; it is never synced or
-  exported. The original words are always kept.
+  ai*. Signed-in people get 50 free sorts, or can connect their own Claude or
+  OpenAI key. The Firebase Function reads the key from a private account document
+  and sends only that quick note's text to the provider. If sorting is unavailable,
+  keywords file the note instead. The original words are always kept.
 - **Settings** rise from the bottom; click outside to go back. From the shelf
   they are the full book: books on the shelf (tap the little spines), day book
   pages, quick notes, hours shown, week start, writing lines, your account,
@@ -74,10 +74,11 @@ same key as before (`spread-planner.v1`), so existing notebooks open
 unchanged. The first load after the redesign keeps one untouched copy of the
 old notebooks at `dayblock.before-redesign.v1`. With cloud saving activated,
 Firebase stores your notebooks under your own UID; see
-[CLOUD-SETUP.md](CLOUD-SETUP.md). With AI sorting on, the text of each quick
-note (and nothing else) goes to the Anthropic API using your own key. Calendar
-events, access tokens, and the Claude key are never part of backups or cloud
-sync. Keep exported backups; this early release should not be the only copy of
+[CLOUD-SETUP.md](CLOUD-SETUP.md). With AI sorting on, a signed-in quick note's
+text goes through a Firebase Function to Claude or OpenAI; no full notebook or
+calendar data is sent for sorting. A personal AI key is stored separately in
+Firestore, readable by the server but not by the browser. It is never part of
+notebook backups. Keep exported backups; this early release should not be the only copy of
 anything important.
 
 ## Project structure
@@ -86,7 +87,8 @@ anything important.
 index.html          page structure
 styles.css          desk, cloth, paper, loose paper; phone layout
 app.js              state, migration, every notebook, shelf, settings, onboarding
-quick-notes.js      quick-note sorting (Claude + keyword fallback) and filing
+quick-notes.js      shared AI classifier, keyword fallback, and filing
+functions/          Firebase sorting endpoints and free-sort allowance
 planner-layout.js   book-first sizing and reversible timeline geometry
 google-calendar.js  read-only Calendar import and authorization
 calendar-config.js  optional separate calendar client ID (empty; sign-in covers it)
@@ -98,9 +100,8 @@ account.js          account window, sign-in and backup controls
 firestore.rules     private-per-user rules to deploy in Firebase
 ```
 
-IBM Plex Sans and Mono load from Google Fonts. The Anthropic SDK loads from
-esm.sh only when AI sorting runs. Firebase and Google's authorization library
-load only when configured.
+IBM Plex Sans and Mono load from Google Fonts. Firebase loads only when configured.
+The Anthropic SDK runs in the Firebase Function, not in the browser.
 
 ## Tests
 
@@ -110,4 +111,4 @@ TZ=America/Los_Angeles node --test tests/*.test.cjs
 
 These cover planner geometry, backup and merge, mocked cloud sync, synthetic
 Calendar data, and quick-note sorting and filing. Real Google sign-in, Firestore
-rules, and live Claude sorting still need checking once they are configured.
+rules, and live provider sorting still need checking after deployment.

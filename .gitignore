@@ -1,0 +1,4 @@
+node_modules/
+functions/shared-quick-notes.js
+*.log
+.firebase/
