@@ -232,8 +232,8 @@ a { color: inherit; }
 .now { position: absolute; left: -4px; right: 0; height: 0; border-top: 1.5px solid var(--pen-clay); z-index: 4; pointer-events: none; }
 .now::before { content: ''; position: absolute; left: -3px; top: -4.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--pen-clay); }
 .block {
-  position: absolute; border-radius: 5px; background: var(--c); padding: 5px 34px 5px 10px;
-  display: flex; flex-direction: column; gap: 1px; overflow: hidden; cursor: grab; touch-action: none;
+  position: absolute; border-radius: 5px; background: var(--c); padding: 0 34px 0 8px;
+  display: flex; flex-direction: column; justify-content: center; gap: 1px; overflow: hidden; cursor: grab; touch-action: none;
   transition: box-shadow .25s ease;
 }
 /* a hairline of paper keeps back-to-back events apart */
@@ -242,18 +242,12 @@ a { color: inherit; }
 .block.hl-none { background: var(--paper); box-shadow: inset 0 0 0 1px var(--ink-3); }
 .block.ghost { opacity: .6; pointer-events: none; }
 .block.has-checklist { padding-right: 68px; }
-.block-time { font: 10px/14px var(--mono); letter-spacing: .06em; color: rgba(0, 0, 0, .45); white-space: nowrap; }
-.block-title { font-size: 13px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 18px; }
-.block.compact { flex-direction: row; align-items: center; gap: 8px; padding-top: 0; padding-bottom: 0; }
-.block.compact .block-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.block.tiny .block-time { display: none; }
-.block.tiny { padding: 0 30px 0 8px; align-items: center; z-index: 2; }
-.block.tiny .block-title { font-size: 11px; line-height: 16px; min-height: 0; }
-.block.tiny .del, .block.tiny .swatch-btn { transform: translateY(-50%) scale(.85); }
-.block .del, .block .swatch-btn { position: absolute; top: 4px; opacity: 0; transition: opacity .25s; }
+.block-title { min-width: 0; font-size: 11px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.block.tiny { padding-right: 30px; z-index: 2; }
+.block .del, .block .swatch-btn { position: absolute; top: 50%; transform: translateY(-50%); opacity: 0; transition: opacity .25s; }
 .block .del { right: 4px; }
-.block .swatch-btn { right: 22px; top: 6px; }
-.block-task-open { position: absolute; right: 40px; top: 3px; min-width: 22px; height: 20px; padding: 0 2px;
+.block .swatch-btn { right: 22px; }
+.block-task-open { position: absolute; right: 40px; top: 50%; transform: translateY(-50%); min-width: 22px; height: 20px; padding: 0 2px;
   font: 10px var(--mono); color: var(--ink-2); text-align: center; opacity: 0; transition: opacity .25s; }
 .block-task-open { opacity: .85; }
 .block-task-open:hover { color: var(--ink); }
@@ -266,8 +260,6 @@ a { color: inherit; }
   border: 1px solid currentColor; border-radius: 2px; font-size: 9px; }
 .block-task-preview-row .text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .block-task-preview-row.done .text { text-decoration: line-through; opacity: .6; }
-.block.compact .del, .block.compact .swatch-btn { top: 50%; transform: translateY(-50%); }
-.block.compact .block-task-open { top: 50%; transform: translateY(-50%); }
 .block:hover .del, .block:hover .swatch-btn, .block:focus-within .del, .block:focus-within .swatch-btn { opacity: .75; }
 .block-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: ns-resize; }
 .block.compact .block-resize { height: 5px; }
@@ -330,8 +322,8 @@ input[type="date"].empty:not(:focus) { color: var(--ink-3); }
 .week-title { height: 24px; font-size: 11px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .week-day .timeline { padding: 6px 0 0; }
 .week-day .block { border-radius: 3px; padding: 1px 6px; font-size: 11px; }
-.week-day .block .block-title { font-size: 11px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.week-day .block .block-time, .week-day .block .del, .week-day .block .swatch-btn, .week-day .block .block-resize { display: none; }
+.week-day .block .block-title { font-size: 11px; line-height: 16px; }
+.week-day .block .del, .week-day .block .swatch-btn, .week-day .block .block-resize { display: none; }
 .week-day .block.has-checklist { padding-right: 29px; }
 .week-day .block-task-open { right: 3px; top: 50%; transform: translateY(-50%); opacity: .9; }
 .week-day .label { margin-top: 16px; }
@@ -856,7 +848,7 @@ dialog::backdrop { background: rgba(51, 51, 51, .25); }
   :root { --wline: 28px; }
   .ruled, .numbered, .empty-line { font-size: 15px; }
   [contenteditable], input:not([type="date"]), select, textarea { font-size: max(16px, 1em); }
-  .block-title { font-size: 13px; }
+  .block-title { font-size: 11px; }
   .month-item, .week-day .todo-text { font-size: 11px; }
   .index-row { min-height: 60px; padding-top: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .index-row .folio { display: none; }

@@ -260,7 +260,7 @@ const hiddenIn = (b, L) => L.items.some(it => it.type !== 'seg' && b.start >= it
 function positionBlock(node, start, end, L) {
   const top = timeToY(Math.max(start, L.start), L);
   const h = Math.max(timeToY(end, L) - top - 2, 2);
-  // Short events keep a readable height: one line, title only.
+  // Short events keep a readable one-line height. The grid shows their time.
   const shown = node.classList.contains('ghost') ? h : Math.max(h, 18);
   node.style.top = `${top + 1}px`;
   node.style.height = `${shown}px`;
@@ -268,8 +268,6 @@ function positionBlock(node, start, end, L) {
   node.classList.toggle('tiny', h < 24);
   node.classList.toggle('roomy', h >= 60);
   node.classList.toggle('very-roomy', h >= 82);
-  const time = node.querySelector('.block-time');
-  if (time) time.textContent = h < 40 ? fmtTime(start) : `${fmtTime(start)} – ${fmtTime(end)}`;
 }
 
 // Overlapping blocks share the width, Google-Calendar style.
@@ -572,8 +570,8 @@ function renderTimeline(container, key, kind = 'day') {
     const { lane, count } = ln[b.id];
     const place = node => { node.style.left = `${lane * 100 / count}%`; node.style.width = `calc(${100 / count}% - ${count > 1 ? 2 : 0}px)`; positionBlock(node, b.start, b.end, L); };
     if (b.readonly) {
-      const node = el('button', { type: 'button', class: 'block calendar-block hl-peri', title: `Google Calendar · ${b.title} · read-only`, 'aria-label': `${b.title}, Google Calendar, read-only` },
-        el('span', { class: 'block-time' }), el('span', { class: 'block-title' }, b.title));
+      const node = el('button', { type: 'button', class: 'block calendar-block hl-peri', title: `Google Calendar · ${b.title} · ${fmtRange(b.start, b.end)} · read-only`, 'aria-label': `${b.title}, ${fmtRange(b.start, b.end)}, Google Calendar, read-only` },
+        el('span', { class: 'block-title' }, b.title));
       node.addEventListener('pointerdown', e => e.stopPropagation());
       node.onclick = e => { e.stopPropagation(); openCalendarEvent(b.source || b); };
       place(node); layer.append(node); continue;
@@ -606,7 +604,7 @@ function renderTimeline(container, key, kind = 'day') {
       item.addEventListener('click', e => e.stopPropagation());
       return item;
     })) : null;
-    node.append(el('div', { class: 'block-time' }), t, preview, taskButton,
+    node.append(...[t, preview, taskButton].filter(Boolean),
       swatchButton(b.color, c => { b.color = c; state.settings.color = c; save(); render(); }),
       delButton(() => { d.blocks = d.blocks.filter(x => x !== b); save(); render(); }, 'delete block'),
       el('div', { class: 'block-resize' }));
