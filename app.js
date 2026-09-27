@@ -1720,7 +1720,7 @@ async function sortNote(note) {
       if (/next month/.test(error.message || '')) toast('free sorting is resting until next month');
       else { freeLeft = 0; toast('free sorts used up · add a key in settings'); }
     }
-    else console.warn('AI sorting failed; using keywords.', error);
+    else { console.warn('AI sorting failed; using keywords.', error); toast('ai unavailable · filed by keywords'); }
     result = Q.heuristic(note.original, new Date()); by = 'sorted by keywords';
   }
   delete note.sorting;

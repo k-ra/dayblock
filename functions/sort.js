@@ -42,6 +42,9 @@ function createSortNote({ db, serverTimestamp, classify, free = FREE_SORTS, budg
       const result = await classify(note, localNow(today));
       return { result, used, left: Math.max(0, free - used) };
     } catch (error) {
+      // Provider errors can include private note text. Log only non-sensitive
+      // diagnostics, never the error object, message, key, or request body.
+      console.error('Free AI sort failed', { name: error?.name, status: error?.status, type: error?.error?.type, param: error?.error?.param });
       // A failed sort doesn't count against the allowance.
       await db.runTransaction(async tx => {
         const [snapshot, spent] = [await tx.get(ref), await tx.get(month)];
@@ -71,7 +74,8 @@ function createPersonalSort({ db, classify }) {
     try {
       const result = await classify(note, localNow(today), provider, key);
       return { result, personal: true, provider };
-    } catch (_) {
+    } catch (error) {
+      console.error('Personal AI sort failed', { provider, name: error?.name, status: error?.status, type: error?.error?.type, param: error?.error?.param });
       throw new SortError('unavailable', 'Your AI key could not sort this note. Check it in settings.');
     }
   };
