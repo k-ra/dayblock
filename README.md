@@ -19,7 +19,9 @@ notebooks, quick notes). What changed or moved is listed in
   beside it. Move, resize, retitle, recolour, delete. Todos roll forward to
   today and keep their origin. Done, notes, a focus line, the habits line at
   the foot of each day, and a mini month. Week and month have their own focus
-  and notes. On a phone, tap a day in the month to add a block, todo, or
+  and notes. Each time block can keep a small checklist; open its checkbox to
+  add steps, and check visible steps directly on longer blocks. On a phone,
+  tap a day in the month to add a block, todo, or
   all-day note.
 - **Ideas** (index + entry), **book log** (contents + a journal spread per
   book), **recipes** (contents, shopping list, ingredients that can go to

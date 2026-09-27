@@ -266,6 +266,8 @@ function positionBlock(node, start, end, L) {
   node.style.height = `${shown}px`;
   node.classList.toggle('compact', h < 40);
   node.classList.toggle('tiny', h < 24);
+  node.classList.toggle('roomy', h >= 60);
+  node.classList.toggle('very-roomy', h >= 82);
   const time = node.querySelector('.block-time');
   if (time) time.textContent = h < 40 ? fmtTime(start) : `${fmtTime(start)} – ${fmtTime(end)}`;
 }
@@ -576,7 +578,10 @@ function renderTimeline(container, key, kind = 'day') {
       node.onclick = e => { e.stopPropagation(); openCalendarEvent(b.source || b); };
       place(node); layer.append(node); continue;
     }
-    const node = el('div', { class: `block hl-${b.color}`, 'data-id': b.id, tabindex: 0, 'aria-label': `${fmtRange(b.start, b.end)} · ${b.title || 'untitled block'}` });
+    const tasks = Array.isArray(b.tasks) ? b.tasks : [];
+    const done = tasks.filter(task => task.done).length;
+    const node = el('div', { class: `block hl-${b.color}${tasks.length ? ' has-checklist' : ''}`, 'data-id': b.id, tabindex: 0,
+      'aria-label': `${fmtRange(b.start, b.end)} · ${b.title || 'untitled block'}${tasks.length ? ` · ${done} of ${tasks.length} tasks done` : ''}` });
     node.addEventListener('keydown', e => { if (e.target === node && ['Enter', ' '].includes(e.key)) { e.preventDefault(); openBlockEditor(key, b); } });
     const t = editable('div', 'block-title', b.title, 'title', v => { b.title = v; save(); }, {
       label: 'Block title',
@@ -590,7 +595,18 @@ function renderTimeline(container, key, kind = 'day') {
         }, 0);
       },
     });
-    node.append(el('div', { class: 'block-time' }), t,
+    const taskButton = tasks.length ? button(`${done}/${tasks.length}`, () => openBlockEditor(key, b),
+      { class: 'block-task-open', 'aria-label': `Checklist for ${b.title || 'time block'}`, title: 'block checklist' }) : null;
+    taskButton?.addEventListener('pointerdown', e => e.stopPropagation());
+    const preview = tasks.length ? el('div', { class: 'block-task-preview' }, tasks.slice(0, 2).map(task => {
+      const item = button([el('span', { class: 'box' }, task.done ? '✓' : ''), el('span', { class: 'text' }, task.text)], () => {
+        task.done = !task.done; save(); render();
+      }, { class: `block-task-preview-row${task.done ? ' done' : ''}`, 'aria-label': `${task.done ? 'Mark not done' : 'Mark done'}: ${task.text}` });
+      item.addEventListener('pointerdown', e => e.stopPropagation());
+      item.addEventListener('click', e => e.stopPropagation());
+      return item;
+    })) : null;
+    node.append(el('div', { class: 'block-time' }), t, preview, taskButton,
       swatchButton(b.color, c => { b.color = c; state.settings.color = c; save(); render(); }),
       delButton(() => { d.blocks = d.blocks.filter(x => x !== b); save(); render(); }, 'delete block'),
       el('div', { class: 'block-resize' }));
@@ -767,16 +783,44 @@ function openBlockEditor(key, block) {
     swatches.replaceChildren(...PENS.map(c => button('', () => { color = c; drawSwatches(); }, { class: `sw hl-${c}${penOf(color) === c ? ' on' : ''}`, title: PEN_NAMES[c], 'aria-label': PEN_NAMES[c] })));
   };
   drawSwatches();
+  const tasks = Array.isArray(block.tasks) ? block.tasks.filter(task => task && typeof task.text === 'string').map(task => ({ ...task })) : [];
+  const taskRows = el('div', { class: 'block-checklist-rows' });
+  const taskDraft = el('input', { 'aria-label': 'New checklist item', placeholder: 'add a small step', maxlength: 300 });
+  const addTask = () => {
+    const text = taskDraft.value.trim();
+    if (!text) { taskDraft.focus(); return; }
+    if (tasks.length >= 20) { toast('20 steps per block is plenty'); return; }
+    tasks.push({ id: uid(), text, done: false });
+    taskDraft.value = '';
+    drawTasks(); taskDraft.focus();
+  };
+  const drawTasks = () => taskRows.replaceChildren(...tasks.map((task, i) => {
+    const check = button(task.done ? '✓' : '', () => { task.done = !task.done; drawTasks(); },
+      { class: 'block-check', role: 'checkbox', 'aria-checked': String(!!task.done), 'aria-label': `Done: ${task.text}` });
+    const text = el('input', { 'aria-label': `Checklist item ${i + 1}`, value: task.text, maxlength: 300 });
+    text.oninput = () => { task.text = text.value; };
+    text.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); taskDraft.focus(); } };
+    const removeTask = button('×', () => { tasks.splice(i, 1); drawTasks(); },
+      { class: 'block-check-remove', 'aria-label': `Remove checklist item ${i + 1}` });
+    return el('div', { class: `block-checklist-row${task.done ? ' done' : ''}` }, check, text, removeTask);
+  }));
+  taskDraft.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addTask(); } };
+  drawTasks();
+  const checklist = el('section', { class: 'block-checklist', 'aria-label': 'Block checklist' },
+    el('span', { class: 'block-checklist-heading' }, 'TO DO'), taskRows,
+    el('div', { class: 'block-checklist-add' }, taskDraft, button('+ add', addTask, { 'aria-label': 'Add checklist item' })));
   const error = el('p', { role: 'alert' });
   const cancel = button('cancel', () => dialog.close());
   const remove = button('remove', () => { dayData(key).blocks = dayData(key).blocks.filter(b => b !== block); fresh.delete(block.id); save(); dialog.close(); render(); }, { class: 'remove' });
   form.append(el('h3', {}, `${dayLabel(key)} · ${monthYear(key)}`), title,
-    el('div', { class: 'block-editor-times' }, start, el('span', { class: 'ink-3' }, '–'), end), swatches, error,
+    el('div', { class: 'block-editor-times' }, start, el('span', { class: 'ink-3' }, '–'), end), swatches, checklist, error,
     el('div', { class: 'block-editor-actions' }, remove, cancel, el('button', { type: 'submit' }, 'save')));
   form.onsubmit = e => {
     e.preventDefault();
     if (+end.value <= +start.value || !title.value.trim()) { error.textContent = 'add a title and an end time after the start.'; return; }
+    if (taskDraft.value.trim() && tasks.length < 20) tasks.push({ id: uid(), text: taskDraft.value.trim(), done: false });
     block.title = title.value.trim(); block.start = +start.value; block.end = +end.value; block.color = color;
+    block.tasks = tasks.map(task => ({ id: task.id, text: task.text.trim(), done: !!task.done })).filter(task => task.text);
     state.settings.color = color;
     fresh.delete(block.id); save(); dialog.close(); render();
   };

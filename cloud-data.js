@@ -15,7 +15,12 @@
     walk(data);
     for (const [key, day] of Object.entries(data.days)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !object(day) || !Array.isArray(day.blocks) || !Array.isArray(day.todos)) throw new Error('Invalid day in backup.');
-      for (const block of day.blocks) if (!object(block) || typeof block.id !== 'string' || !Number.isFinite(block.start) || !Number.isFinite(block.end) || block.start < 0 || block.end > 24 || block.end <= block.start) throw new Error('Invalid time block.');
+      for (const block of day.blocks) {
+        if (!object(block) || typeof block.id !== 'string' || !Number.isFinite(block.start) || !Number.isFinite(block.end) || block.start < 0 || block.end > 24 || block.end <= block.start) throw new Error('Invalid time block.');
+        if (block.tasks !== undefined && (!Array.isArray(block.tasks) || block.tasks.length > 20 || block.tasks.some(task =>
+          !object(task) || typeof task.id !== 'string' || typeof task.text !== 'string' || task.text.length > 300 || typeof task.done !== 'boolean')))
+          throw new Error('Invalid time block checklist.');
+      }
       for (const todo of day.todos) if (!object(todo) || typeof todo.id !== 'string' || typeof todo.text !== 'string') throw new Error('Invalid todo.');
       for (const field of ['title', 'done']) if (day[field] !== undefined && typeof day[field] !== 'string') throw new Error('Invalid day text.');
       if (day.notes !== undefined && typeof day.notes !== 'string' && !Array.isArray(day.notes)) throw new Error('Invalid day notes.');

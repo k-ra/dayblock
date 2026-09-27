@@ -33,6 +33,15 @@ test('reject malformed, unsafe and oversized imports/cloud documents', () => {
   assert.throws(() => D.serialize(withNote('a'.repeat(800001))), /limit/);
   assert.throws(() => D.validate({ ...blank(), trackers: { ideas: 'bad', reading: [] } }), /Invalid/);
 });
+test('time-block checklists survive backups and reject malformed items', () => {
+  const data = withNote('');
+  const block = { id: 'block', start: 9, end: 10, title: 'morning work', tasks: [{ id: 'step', text: 'outline', done: true }] };
+  data.days['2026-09-21'].blocks.push(block);
+  const restored = D.parseBackup(JSON.stringify({ format: 'dayblock-backup', data: D.portable(data) }));
+  assert.deepEqual(restored.days['2026-09-21'].blocks[0].tasks, block.tasks);
+  block.tasks[0].done = 'yes';
+  assert.throws(() => D.validate(data), /checklist/);
+});
 test('import preserves conflicting day notes and books; repeated import is idempotent', () => {
   const a = withNote('cloud'), b = withNote('browser');
   a.trackers.reading.push({ id: 'book', title: 'Birds', notes: 'cloud thoughts' });

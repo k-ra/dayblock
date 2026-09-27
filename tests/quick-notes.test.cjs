@@ -39,6 +39,10 @@ test('filing writes through and unfiling removes only untouched entries', () => 
   assert.equal(state.days['2026-09-22'].blocks[0].end, 17.5);
   Q.unfile(state, note);
   assert.equal(state.days['2026-09-22'].blocks.length, 0);
+  note.ref = Q.file(state, note, { uid, today: '2026-09-22' });
+  state.days['2026-09-22'].blocks[0].tasks = [{ id: 'step', text: 'prepare talking points', done: false }];
+  Q.unfile(state, note);
+  assert.equal(state.days['2026-09-22'].blocks.length, 1, 'a checklist makes this a user-edited block');
 
   const todo = { dest: 'planner', section: 'todo', date: '', stored: 'send the handoff' };
   todo.ref = Q.file(state, todo, { uid, today: '2026-09-22' });
