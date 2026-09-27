@@ -1983,8 +1983,6 @@ function renderOnboarding() {
   const tasks = [
     el('div', { class: `task${named ? ' done' : ''}` }, box(named), el('span', { class: 'text' }, 'write your name')),
     button([box(stored), el('span', { class: 'text' }, 'sign in with Google')], () => { if (accountStatus.available && !signed) account.signIn(); else if (!accountStatus.available) { onboard.local = true; renderOnboarding(); } }, { class: `task${stored ? ' done' : ''}`, disabled: stored }),
-    // Sign-in is the easy default: say what it brings, keep "skip" small.
-    !signed && !onboard.local && accountStatus.available ? el('p', { class: 'perk' }, 'your pages on every device, plus 50 free ai sorts') : null,
     !signed && !onboard.local ? button(accountStatus.available ? 'skip for now · this device only' : 'sign-in isn’t set up yet · keep it on this device', () => { onboard.local = true; renderOnboarding(); }, { class: 'aside-link' }) : null,
     el('div', { class: `task${picked ? ' done' : ''}` }, box(picked), el('span', { class: 'text' }, 'favorite color'),
       el('span', { class: 'dots' }, ['butter', 'rose', 'seafoam', 'peri', 'clay', 'moss'].map(c => button('', () => { onboard.picked = c; renderOnboarding(); }, { class: `hl-${c}`, 'aria-pressed': String(onboard.picked === c), 'aria-label': PEN_NAMES[c] })))),
@@ -2069,7 +2067,7 @@ function signInNudge() {
   };
   onboardEl.replaceChildren(el('div', { class: `postit welcome tinted hl-${welcomeTint()}`, role: 'dialog', 'aria-label': 'Sign in' },
     el('p', { class: 'hello' }, name ? ['welcome back, ', el('strong', {}, name)] : 'welcome back'),
-    el('p', { class: 'sub' }, 'you’re signed out here. sign in for your pages everywhere and 50 free ai sorts.'),
+    el('p', { class: 'sub' }, 'you’re signed out on this device.'),
     el('ul', { class: 'hole-list' },
       hole('sign in with Google', () => { closeGreeting(); account.signIn(); }),
       hole('stay on this device', () => { try { localStorage.setItem(STAY_LOCAL, '1'); } catch (_) { /* asks again next time */ } closeGreeting(); }))));
