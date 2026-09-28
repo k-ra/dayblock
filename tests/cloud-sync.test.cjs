@@ -72,28 +72,50 @@ test('declining import loads cloud without uploading guest data', async () => {
   await h.controller.switchUser({ uid: 'alice' });
   assert.equal(h.current().days['2026-09-21'].notes, 'cloud'); assert.equal(h.writes.length, 0);
 });
-test('concurrent device changes stop rather than overwrite; combine preserves both', async () => {
+test('two devices editing different things merge silently, with nothing duplicated', async () => {
+  const start = withNote('start'); start.days['2026-09-22'] = { blocks: [], todos: [], notes: 'tuesday', title: '', done: '' };
+  const h = harness({ cloud: start, choose: false });
+  await h.controller.switchUser({ uid: 'alice' });
+  const mine = D.clone(h.current()); mine.days['2026-09-21'].notes = 'device edit';
+  const theirs = D.portable(start); theirs.days['2026-09-22'].notes = 'other device';
+  h.edit(mine); h.advance(theirs); await h.controller.flush(); await h.controller.flush();
+  assert.ok(h.messages.every(m => m.phase !== 'conflict'));
+  assert.equal(h.record().data.days['2026-09-21'].notes, 'device edit');
+  assert.equal(h.record().data.days['2026-09-22'].notes, 'other device');
+  assert.equal(h.current().days['2026-09-22'].notes, 'other device');
+  assert.equal(h.controller.pending(), false);
+});
+test('the same note edited on two devices keeps both versions and a recovery copy', async () => {
   const h = harness({ cloud: withNote('start'), choose: false });
   await h.controller.switchUser({ uid: 'alice' });
-  h.edit(withNote('device edit')); h.advance(withNote('other device')); await h.controller.flush();
-  assert.equal(h.messages.at(-1).phase, 'conflict');
-  assert.equal(h.record().data.days['2026-09-21'].notes, 'other device');
-  await h.controller.resolve(true);
+  h.edit(withNote('device edit')); h.advance(withNote('other device')); await h.controller.flush(); await h.controller.flush();
   assert.match(h.record().data.days['2026-09-21'].notes, /other device[\s\S]*device edit/);
   assert.equal(h.controller.recovery().days['2026-09-21'].notes, 'device edit');
 });
-test('load-cloud conflict resolution retains a downloadable recovery copy', async () => {
-  const h = harness({ cloud: withNote('start'), choose: false });
-  await h.controller.switchUser({ uid: 'alice' }); h.edit(withNote('device edit')); h.advance(withNote('cloud edit'));
-  await h.controller.flush(); await h.controller.resolve(false);
-  assert.equal(h.current().days['2026-09-21'].notes, 'cloud edit');
+test('an older dirty cache without a merge baseline keeps both versions', async () => {
+  const h = harness({ cloud: withNote('cloud edit'), choose: false });
+  h.storage.setItem('dayblock.account.v1:alice', JSON.stringify({
+    state: withNote('device edit'), revision: 0, dirty: true,
+  }));
+  await h.controller.switchUser({ uid: 'alice' });
+  await h.controller.flush();
+  assert.match(h.record().data.days['2026-09-21'].notes, /cloud edit[\s\S]*device edit/);
   assert.equal(h.controller.recovery().days['2026-09-21'].notes, 'device edit');
+});
+test('a list item deleted on one device and untouched on the other stays deleted', async () => {
+  const start = blank(); start.trackers.ideas = [{ id: 'a', text: 'keep' }, { id: 'b', text: 'drop' }];
+  const h = harness({ cloud: D.portable(start), choose: false });
+  await h.controller.switchUser({ uid: 'alice' });
+  const mine = D.clone(h.current()); mine.trackers.ideas = mine.trackers.ideas.filter(i => i.id !== 'b');
+  const theirs = D.portable(start); theirs.trackers.ideas.push({ id: 'c', text: 'new' });
+  h.edit(mine); h.advance(theirs); await h.controller.flush(); await h.controller.flush();
+  assert.deepEqual(h.record().data.trackers.ideas.map(i => i.id).sort(), ['a', 'c']);
 });
 test('offline changes persist per account and retry when online', async () => {
   const h = harness({ cloud: withNote('start'), choose: false });
   await h.controller.switchUser({ uid: 'alice' }); h.offline(true); h.edit(withNote('offline edit')); await h.controller.flush();
   assert.equal(JSON.parse(h.storage.getItem('dayblock.account.v1:alice')).dirty, true);
-  await assert.rejects(h.controller.signOut(), /unsynced/);
+  await assert.rejects(h.controller.signOut(), /haven’t reached your account/);
   h.offline(false); await h.controller.refresh();
   assert.equal(h.record().data.days['2026-09-21'].notes, 'offline edit'); assert.equal(h.controller.pending(), false);
 });

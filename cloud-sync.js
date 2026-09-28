@@ -1,4 +1,6 @@
-/* Revision-checked sync. The guest notebook is never replaced by account data. */
+/* Revision-checked sync that never asks: when two devices edit at once, the
+   edits are merged against the last synced copy (cache.base) and saved again.
+   The guest notebook is never replaced by account data. */
 (function (root) {
   'use strict';
   const D = typeof module !== 'undefined' && module.exports ? require('./cloud-data.js') : root.DayblockCloudData;
@@ -21,14 +23,14 @@
       cache.state = D.clone(data);
       cache.dirty ||= changed;
       persist();
-      if (cache.dirty && phase !== 'conflict') {
+      if (cache.dirty) {
         report('pending', 'Saved on this device · waiting to sync');
         clearTimeout(timer); timer = setTimeout(() => flush(), delay);
       }
     }
     async function flush() {
       if (flight) return flight;
-      if (!user || !cache?.dirty || phase === 'conflict') return;
+      if (!user || !cache?.dirty) return;
       const generation = epoch, account = user.uid, snapshot = D.clone(cache.state), revision = cache.revision;
       report('saving', 'Saving to your account…');
       const operation = (async () => {
@@ -36,17 +38,38 @@
           const next = await remote.write(account, snapshot, revision);
           if (generation !== epoch) return;
           cache.revision = next;
+          cache.base = D.portable(snapshot);
           cache.dirty = D.canonical(D.portable(cache.state)) !== D.canonical(D.portable(snapshot));
           persist();
           report(cache.dirty ? 'pending' : 'synced', cache.dirty ? 'Saving your latest changes…' : 'Saved to your account');
         } catch (error) {
-          if (generation === epoch) report(error.code === 'dayblock/conflict' ? 'conflict' : 'error', error.message || 'Cloud save failed. Your device copy is safe.');
+          if (generation !== epoch) return;
+          if (error.code === 'dayblock/conflict') await combine(generation);
+          else report('error', error.message || 'Cloud save failed. Your device copy is safe.');
         }
       })();
       flight = operation;
       await operation;
       if (flight === operation) flight = null;
       if (generation === epoch && cache?.dirty && phase === 'pending') { clearTimeout(timer); timer = setTimeout(() => flush(), delay); }
+    }
+    // Another device saved first: fold its changes into ours, then save again.
+    async function combine(generation) {
+      try {
+        const cloud = await remote.read(user.uid);
+        if (generation !== epoch) return;
+        // Wait for a quiet moment rather than swapping the page under the cursor.
+        if (!canApply()) { report('pending', 'Catching up with your other device…'); return; }
+        storage.setItem(`dayblock.recovery.v1:${user.uid}`, JSON.stringify(cache.state));
+        // Older device caches have no baseline. Keep both copies in that case
+        // rather than guessing which old fields changed on which device.
+        const merged = cloud.data ? cache.base
+          ? D.merge3(cache.base, D.portable(cache.state), cloud.data)
+          : D.merge(cloud.data, D.portable(cache.state)) : cache.state;
+        cache = { state: localize(merged, cache.state), revision: cloud.revision, base: cloud.data ? D.portable(cloud.data) : null, dirty: true };
+        persist(); apply(cache.state);
+        report('pending', 'Combined with your other device…');
+      } catch (error) { if (generation === epoch) report('error', 'Could not reach cloud storage. Your device copy is safe.'); }
     }
     async function switchUser(next) {
       const generation = ++epoch;
@@ -73,8 +96,7 @@
         if (generation !== epoch) return;
         if (saved?.dirty) {
           user = next; cache = saved; apply(localize(cache.state, cache.state));
-          if (cloud.revision !== cache.revision) report('conflict', 'This device and the cloud both have changes. Choose how to continue.');
-          else await flush();
+          await flush();
           return;
         }
         const guest = D.validate(read(guestKey) || blank());
@@ -88,7 +110,7 @@
         // Read again: typing before the import prompt must not be lost.
         const currentGuest = D.validate(read(guestKey) || guest);
         if (imported) value = cloud.data ? D.merge(value, currentGuest) : D.portable(currentGuest);
-        const opening = { state: localize(value, saved?.state), revision: cloud.revision, dirty: imported || !cloud.data };
+        const opening = { state: localize(value, saved?.state), revision: cloud.revision, base: cloud.data ? D.portable(cloud.data) : null, dirty: imported || !cloud.data };
         // Storage failure must not bind the still-visible guest editor to an
         // account. Finish persisting before switching the editor's ownership.
         storage.setItem(key(next.uid), JSON.stringify(opening));
@@ -103,43 +125,27 @@
       }
     }
     async function refresh() {
-      if (!user || !cache || flight || phase === 'conflict') return;
+      if (!user || !cache || flight) return;
       if (cache.dirty) { await flush(); return; }
       const generation = epoch;
       try {
         const cloud = await remote.read(user.uid);
         if (generation !== epoch || cache.dirty || !canApply()) return;
         if (cloud.revision !== cache.revision && cloud.data) {
-          const fresh = { state: localize(cloud.data, cache.state), revision: cloud.revision, dirty: false };
+          const fresh = { state: localize(cloud.data, cache.state), revision: cloud.revision, base: D.portable(cloud.data), dirty: false };
           storage.setItem(key(user.uid), JSON.stringify(fresh));
           cache = fresh; apply(cache.state);
         }
         report(cache.dirty ? 'pending' : 'synced', cache.dirty ? 'Saving your latest changes…' : 'Saved to your account');
       } catch (error) { if (generation === epoch) report('error', 'Could not reach cloud storage. Your device copy is safe.'); }
     }
-    async function resolve(combine) {
-      if (!user || !cache) return;
-      const generation = epoch;
-      try {
-        const cloud = await remote.read(user.uid);
-        if (generation !== epoch) return;
-        // A recovery copy is kept even when the user explicitly chooses cloud.
-        storage.setItem(`dayblock.recovery.v1:${user.uid}`, JSON.stringify(cache.state));
-        const value = combine && cloud.data ? D.merge(cloud.data, cache.state) : cloud.data || cache.state;
-        const resolved = { state: localize(value, cache.state), revision: cloud.revision, dirty: combine || !cloud.data };
-        storage.setItem(key(user.uid), JSON.stringify(resolved));
-        cache = resolved; apply(cache.state);
-        report('pending', 'Resolving changes…');
-        if (cache.dirty) await flush(); else report('synced', 'Loaded cloud copy · previous device copy kept as a recovery backup');
-      } catch (error) { report('conflict', error.message); }
-    }
     async function signOut() {
       await flush();
-      if (cache?.dirty) throw new Error('There are unsynced changes. Sync or resolve them before signing out.');
+      if (cache?.dirty) throw new Error('Some changes haven’t reached your account yet. Reconnect, then sign out.');
       await remote.signOut();
       // Firebase's auth listener restores the untouched guest notebook.
     }
-    return { save, flush, refresh, switchUser, resolve, signOut,
+    return { save, flush, refresh, switchUser, signOut,
       currentUser: () => user, pending: () => !!cache?.dirty,
       recovery: () => user ? read(`dayblock.recovery.v1:${user.uid}`) : null };
   }

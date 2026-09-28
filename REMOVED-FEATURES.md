@@ -35,6 +35,24 @@ small card (hours shown, week start, writing lines) with a link to the rest.
 - **Margin** (now called **desk**): use the desk button above the paper.
 - **Work hours** only appear when hours shown is *work* or *after work*.
 
+## Settings as a notepad (September 27, 2026)
+
+Settings are now one small top-bound notepad, the same on every screen. **your data**
+and **quick notes ai** are its next sheets, same size and place. Nothing pops up by itself.
+
+- **Day book pages** (morning pages / schedule / mood + gratitude toggles): removed. The
+  day book is preset and always shows every page. A saved choice to hide a page is reset.
+- **Compact settings card inside a notebook** and the "all settings on the shelf" link:
+  gone. The notepad opens wherever the settings button is.
+- **Account window** (the pushed "account · sync conflict" / "needs attention" pop-up):
+  no longer opens on its own. Sign in / out, calendar and backups live on **your data**.
+- **Sync conflict choice** (combine both copies / load cloud copy): removed. Two devices
+  that edit at once are merged automatically against the last synced copy; an edit made
+  on only one device wins, and text changed on both keeps both versions. A recovery copy
+  of this device's notebooks is still saved before each merge.
+- **Your name** field in settings: not listed (still set during onboarding, still shown).
+- **Week start** gains **saturday** (monday / saturday / sunday).
+
 ## Not built yet (open in the handoff)
 
 - **Stickers.** The onboarding prototype has a sticker sheet, but the sticker art and

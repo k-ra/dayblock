@@ -130,6 +130,49 @@
     const any = Object.values(counts).some(Boolean) || (other && hasContent(b));
     return { ...counts, any };
   }
+  // Three-way merge for automatic sync: compared with the last synced copy
+  // (base), a change made on only one device wins cleanly; a field changed on
+  // both keeps both; list items (todos, blocks, ideas…) merge one by one by id.
+  function merge3(base, local, cloud) {
+    const same = (a, b) => canonical(a ?? null) === canonical(b ?? null);
+    const pick = (b, l, c) => {
+      if (same(l, c)) return l === undefined ? undefined : clone(l);
+      if (same(l, b)) return c === undefined ? undefined : clone(c);
+      if (same(c, b)) return l === undefined ? undefined : clone(l);
+      if (l === undefined) return clone(c);
+      if (c === undefined) return clone(l);
+      if (Array.isArray(l) && Array.isArray(c)) {
+        const old = Array.isArray(b) ? b : [];
+        if ([...l, ...c].every(x => object(x) && typeof x.id === 'string')) {
+          const find = (list, id) => list.find(x => x.id === id);
+          const out = [];
+          for (const id of new Set([...c.map(x => x.id), ...l.map(x => x.id)])) {
+            const merged = pick(find(old, id), find(l, id), find(c, id));
+            if (merged !== undefined) out.push(merged);
+          }
+          return out;
+        }
+        return Array.from({ length: Math.max(l.length, c.length) }, (_, i) => pick(old[i], l[i], c[i])).filter(v => v !== undefined);
+      }
+      if (object(l) && object(c)) {
+        const old = object(b) ? b : {}, out = {};
+        for (const key of new Set([...Object.keys(c), ...Object.keys(l)])) {
+          const merged = pick(old[key], l[key], c[key]);
+          if (merged !== undefined) out[key] = merged;
+        }
+        return out;
+      }
+      if (typeof l === 'string' && typeof c === 'string') {
+        if (!l.trim()) return c;
+        if (!c.trim()) return l;
+        if (c.includes(l)) return c;
+        if (l.includes(c)) return l;
+        return `${c}\n${l}`;
+      }
+      return clone(l);
+    };
+    return validate(pick(base, local, cloud));
+  }
   function serialize(data) {
     const payload = JSON.stringify(portable(data));
     if (new TextEncoder().encode(payload).length > 800000) throw new Error('Cloud notebook limit reached (800 KB). Export a backup; your local copy is still safe.');
@@ -140,7 +183,7 @@
     const value = JSON.parse(text);
     return validate(value.format === 'dayblock-backup' ? value.data : value);
   }
-  const api = { clone, validate, portable, canonical, fingerprint, merge, serialize, parseBackup, hasContent, newContent };
+  const api = { clone, validate, portable, canonical, fingerprint, merge, serialize, parseBackup, hasContent, newContent, merge3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DayblockCloudData = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,6 +1,6 @@
 /* Quiet bookshelf account controls; local-only mode works without Firebase. */
 window.DayblockAccount = {
-  create({ getState, apply, blank, onReport = () => {}, askImport = null }) {
+  create({ getState, apply, blank, onReport = () => {}, askImport = null, notify = () => {} }) {
     const D = window.DayblockCloudData;
     const $ = selector => document.querySelector(selector);
     const dialog = $('#accountDialog'), status = $('#accountStatus');
@@ -16,16 +16,14 @@ window.DayblockAccount = {
     function report({ phase, message: text, user }) {
       message(text);
       $('#accountIdentity').textContent = user?.email || user?.displayName || 'browser notebooks';
-      $('#cloudConflict').hidden = phase !== 'conflict';
       $('#cloudSync').hidden = !user;
       $('#cloudSignOut').hidden = !authUser;
       $('#cloudSignIn').hidden = !!user;
       $('#cloudSignIn').disabled = !remote || phase === 'loading';
       $('#cloudSignOut').disabled = phase === 'loading';
       $('#cloudRecovery').hidden = !sync?.recovery();
-      const issue = ['error', 'conflict'].includes(phase);
-      $('#accountNotice').hidden = !issue;
-      $('#accountNotice').textContent = phase === 'conflict' ? 'account · sync conflict' : 'account · needs attention';
+      // Sync problems show quietly in settings; nothing pops up over the page.
+      $('#accountNotice').hidden = true;
       $('#accountLauncher').textContent = user ? 'account' : 'sign in / backup';
       onReport({ phase, message: text, user, available: !!remote });
     }
@@ -50,12 +48,11 @@ window.DayblockAccount = {
         if (sync) sync.save(merged); else localStorage.setItem('spread-planner.v1', JSON.stringify(merged));
         apply(merged);
         message('Backup imported. Existing entries were kept; differing copies may appear twice.');
-      } catch (error) { message(error.message); }
+        notify('backup imported · nothing already here was replaced');
+      } catch (error) { message(error.message); notify(quiet(error.message)); }
       event.target.value = '';
     };
     $('#cloudSync').onclick = () => sync?.refresh();
-    $('#cloudCombine').onclick = () => sync?.resolve(true);
-    $('#cloudUseRemote').onclick = () => sync?.resolve(false);
     $('#cloudSignOut').onclick = async () => {
       try { if (sync?.currentUser()) await sync.signOut(); else await remote?.signOut(); }
       catch (error) { message(error.message); }
@@ -136,7 +133,11 @@ window.DayblockAccount = {
       request: () => remote.calendarToken(),
       onToken: callback => { calendarToken = callback; },
     };
-    return { calendar, secrets, free, open: () => dialog.showModal(), signIn: () => $('#cloudSignIn').click(), available: () => !!remote, save(data) {
+    return { calendar, secrets, free, open: () => dialog.showModal(), signIn: () => $('#cloudSignIn').click(), available: () => !!remote,
+      signOut: () => sync?.currentUser() ? sync.signOut() : remote?.signOut(),
+      recoveryAvailable: () => !!sync?.recovery(),
+      downloadRecovery: () => { const data = sync?.recovery(); if (data) download(data, 'recovery'); },
+      save(data) {
       try { if (sync) sync.save(data); else localStorage.setItem('spread-planner.v1', JSON.stringify(data)); }
       catch (error) { message('Could not save on this device. Export a backup now before closing the page.'); $('#accountNotice').hidden = false; $('#accountNotice').textContent = 'account · storage full'; }
     } };

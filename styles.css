@@ -471,51 +471,70 @@ body[data-surface="daybook"] .desk-row { padding-top: 0 !important; }
 .divider-tabs button:hover { opacity: .9; }
 
 /* ---------- settings ---------- */
-.settings-book .page { gap: 22px; }
-.set-group { display: flex; flex-direction: column; }
-.set-row { display: flex; align-items: center; gap: 12px; min-height: 40px; border-bottom: 1px solid var(--line-soft); padding: 4px 0; }
-.set-row .name { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; flex: 0 1 auto; }
-.set-row { flex-wrap: wrap; }
-.set-row .name .dot { width: 10px; height: 10px; border-radius: 2px; flex: none; background: var(--dot); }
-.set-row .opts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; font-size: 11px; letter-spacing: .08em; }
-.set-row .opts .pill { color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
-.set-row .opts .pill[aria-pressed="true"] { color: var(--ink); }
-.set-row .opts .pill:hover { color: var(--ink); }
-.set-row .opts .pill.action { color: var(--ink-2); }
 .swatches { display: inline-flex; }
 .swatches i { width: 10px; height: 10px; border-radius: 50%; background: var(--sw); margin-right: -2px; }
-.set-note { margin: 6px 0 4px; font-size: 11px; line-height: 17px; color: var(--ink-2); max-width: 420px; }
-.set-row input[type="password"], .set-row input.key { border: 0; border-bottom: 1px solid var(--line); background: none; font: 11px var(--mono); padding: 4px 0; width: 180px; }
 
 /* the name on the desk, above the pile */
 .shelf-title { position: absolute; top: calc(28px + env(safe-area-inset-top)); left: 0; right: 0; margin: 0; text-align: center; font-weight: 400; color: var(--ink-2); letter-spacing: .24em; }
 
-/* the shelf picker: a small pile of spines */
-.mini-pile { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 8px 0 4px; }
-.mini-spine {
-  position: relative; height: 22px; width: var(--w); min-width: 76px; border-radius: 2px 3px 3px 2px; transform: rotate(var(--r));
-  background-color: var(--cover);
-  background-image: repeating-linear-gradient(0deg, #ffffff0a 0 1px, transparent 1px 2px), repeating-linear-gradient(90deg, #00000008 0 1px, transparent 1px 2px);
-  box-shadow: inset 0 1px 0 #ffffff2a, inset 0 -1px 0 #0003, inset 7px 0 0 -5px #f2ead8, 0 6px 10px -7px #312e2966;
-  display: grid; place-items: center; transition: transform .25s ease, opacity .25s ease, filter .25s ease;
-}
-.mini-spine .tag { background: var(--label-cream); color: var(--label-ink); font-size: 10px; letter-spacing: .06em; padding: 0 6px; line-height: 15px; box-shadow: 0 1px 0 #0002; white-space: nowrap; }
-.mini-spine:hover { transform: rotate(var(--r)) translateY(-3px); }
-.mini-spine.off { background: transparent; box-shadow: inset 0 0 0 1px #c9c7c0; transform: rotate(0); }
-.mini-spine.off .tag { background: transparent; box-shadow: none; color: var(--ink-3); }
-.mini-spine.off:hover { box-shadow: inset 0 0 0 1px var(--ink-2); }
-.mini-spine.binder-spine { background-color: var(--cover-binder); }
-.mini-spine.binder-spine.off { background-color: transparent; }
 
-/* settings: a smaller book that rises from the bottom, centred */
-.settings-layer { position: fixed; inset: 0 0 calc(var(--bar-h) + env(safe-area-inset-bottom)); z-index: 45; display: flex; align-items: flex-end; justify-content: center; padding: 16px 16px 10px; background: color-mix(in srgb, var(--desk) 45%, transparent); animation: fadein .25s; }
+.settings-layer { position: fixed; inset: 0 0 calc(var(--bar-h) + env(safe-area-inset-bottom)); z-index: 45; display: flex; align-items: center; justify-content: center; padding: 16px 16px 10px; background: color-mix(in srgb, var(--desk) 45%, transparent); animation: fadein .25s; }
 .settings-layer.closing { animation: fadeout .3s forwards; }
-.settings-layer.closing .settings-book { animation: sinkdown .3s ease-in forwards; }
-.settings-book { width: min(900px, 100%); height: min(620px, 100%); animation: riseup .45s var(--ease); }
-.settings-book.spread { display: grid; }
-.settings-book.compact { width: min(400px, 100%); height: auto; max-height: 100%; }
-.settings-book.compact .page { gap: 16px; padding: 22px 24px 18px; }
-.settings-book .page { padding: 24px 28px; }
+.settings-layer.closing .notepad { animation: sinkdown .3s ease-in forwards; }
+
+/* settings: a small top-bound notepad; your data and quick notes ai are its next sheets, same size, same place */
+.notepad { width: min(340px, 100%); height: min(524px, 100%); display: flex; flex-direction: column; border-radius: 3px; box-shadow: 0 2px 0 -1px #f0efe9, 0 4px 0 -2px #e6e5df, 0 14px 28px -14px rgba(0, 0, 0, .4); animation: riseup .45s var(--ease); }
+.pad-top { height: 14px; flex: none; background: #34405a; border-radius: 3px 3px 0 0; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18); }
+.pad-sheet { flex: 1; min-height: 0; overflow: auto; background: var(--paper); border-top: 1px dashed #dcdad3; border-radius: 0 0 3px 3px; padding: 16px 22px; display: flex; flex-direction: column; gap: 16px; font-size: 12.5px; }
+.pad-title { margin: 0; font-size: 20px; font-weight: 300; line-height: 1; }
+.pad-rows { display: flex; flex-direction: column; }
+.pad-row { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 3px 0; }
+.pad-label { font-weight: 300; color: var(--ink-2); white-space: nowrap; }
+.pad-opts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.pad-choices { display: flex; gap: 10px; font-size: 11.5px; }
+.pad-choice { display: flex; align-items: center; gap: 5px; padding: 4px 3px; min-height: 28px; color: var(--ink-3); }
+.pad-choice:hover { color: var(--ink-2); }
+.pad-choice[aria-pressed="true"] { color: var(--ink); font-weight: 500; }
+.pad-choice[aria-pressed="true"] .hl { background: linear-gradient(transparent 55%, color-mix(in oklch, var(--pen-butter) 65%, white) 55%); padding: 0 2px; margin: 0 -2px; }
+.paper-mark { width: 10px; height: 8px; border-radius: 1px; box-shadow: inset 0 0 0 1px #c9c7c0; background: #fff; }
+.paper-mark.lines { background: #fff repeating-linear-gradient(transparent 0 2px, #b9b7b0 2px 3px); }
+.paper-mark.dots { background: #fff radial-gradient(#b9b7b0 .7px, transparent .9px) 0 0 / 3px 3px; }
+.pad-shelf { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 10px; }
+.pad-book { height: 24px; border-radius: 1px 4px 4px 1px; padding: 0 8px; display: flex; align-items: center; font-size: 10.5px; letter-spacing: .06em; text-align: left; background: var(--cover); color: var(--label-cream); transition: background-color .25s, color .25s, box-shadow .25s; }
+.pad-book:nth-child(even) { width: 94%; }
+.pad-book.light { color: #45433e; }
+.pad-book.off { background: transparent; color: var(--ink-3); box-shadow: inset 0 0 0 1px #d4d2cb; }
+.pad-book:hover { filter: brightness(1.06); }
+.pad-book.tipped { animation: tip .4s var(--ease); }
+@keyframes tip { 35% { transform: rotate(-2.5deg) translateY(-3px); } }
+.pad-link { font-weight: 500; color: var(--ink); min-height: 28px; display: inline-flex; align-items: center; }
+.pad-link.quiet, .pad-quiet { font-weight: 400; color: var(--ink-3); font-size: 11px; }
+.pad-link.quiet:hover { color: var(--ink); }
+.pad-link:disabled { opacity: .5; }
+.pad-sep { color: #d4d2cb; }
+.pad-arrow { color: var(--ink-3); margin-left: 5px; }
+.pad-badge { font: 9px var(--mono); letter-spacing: .12em; background: #f2edc9; padding: 2px 5px; margin-left: 8px; }
+.pad-hour { font: 10px var(--mono); letter-spacing: .08em; }
+.pad-account { display: flex; align-items: center; gap: 8px; font-size: 11px; min-height: 36px; }
+.pad-sheet > .pad-account { margin-top: auto; }
+.pad-account .who { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
+.pad-account .who strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pad-account .who span { font-size: 9.5px; color: var(--ink-3); }
+.pad-account > :last-child { margin-left: auto; }
+.g-mark { width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1px #c9c7c0; display: grid; place-items: center; font-size: 9px; font-weight: 500; }
+.sync-dot { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #c9a96b; vertical-align: 1px; }
+.sync-dot.ok { background: #6f7a5a; }
+.pad-back { margin-top: auto; align-self: flex-start; }
+.pad-back.pad-link { font-weight: 400; color: var(--ink-3); font-size: 10.5px; letter-spacing: .06em; }
+.pad-switch { width: 28px; height: 16px; padding: 2px; border-radius: 999px; background: #d4d2cb; display: flex; transition: background .2s; }
+.pad-switch::after { content: ''; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); }
+.pad-switch[aria-checked="true"] { background: var(--ink); }
+.pad-switch[aria-checked="true"]::after { transform: translateX(12px); }
+.pad-meter { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.pad-meter .bar { flex: 1; height: 2px; display: flex; background: var(--line); }
+.pad-meter .bar i { background: var(--ink); }
+.pad-meter > span:last-child { font: 9px var(--mono); letter-spacing: .14em; color: var(--ink-3); }
+.pad-row input.key { width: 120px; border: 0; border-bottom: 1px solid #c9c7c0; background: none; font: 11px var(--mono); padding: 3px 0; }
 .bar .settings-btn { position: absolute; left: 50%; transform: translateX(-50%); }
 .bar .settings-btn[aria-expanded="true"] { color: var(--ink); }
 @keyframes riseup { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -908,10 +927,9 @@ dialog::backdrop { background: rgba(51, 51, 51, .25); }
   .divider-tabs button[aria-current="true"] { width: auto; }
   .binder-head { padding: 0 12px; }
   .steps { margin-left: 0; }
-  .settings-book .page { gap: 18px; padding: 20px 20px 24px 24px; }
   .settings-layer { padding: 12px 8px 6px; }
-  .settings-book { height: 100%; }
-  .set-row { flex-wrap: wrap; min-height: 44px; }
-  .set-row .opts { font-size: 13px; }
-  .set-row .opts .pill { min-height: 36px; padding: 0 10px; }
+  .notepad { width: 100%; }
+  .pad-row, .pad-account { min-height: 44px; }
+  .pad-choice, .pad-link { min-height: 40px; padding-left: 5px; padding-right: 5px; }
+  .pad-book { height: 34px; font-size: 12px; }
 }

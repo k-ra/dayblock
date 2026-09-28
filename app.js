@@ -56,8 +56,9 @@ const fromKey = k => { const [y, m, d] = k.split('-').map(Number); return new Da
 const addDays = (k, n) => { const d = fromKey(k); d.setDate(d.getDate() + n); return keyOf(d); };
 const todayKey = () => keyOf(new Date());
 const nowHours = () => { const n = new Date(); return n.getHours() + n.getMinutes() / 60; };
-const sundayFirst = () => state.settings.weekStart === 'sun';
-const weekStart = k => addDays(k, -((fromKey(k).getDay() + (sundayFirst() ? 0 : 6)) % 7));
+// Days to step back from a date's weekday to reach the chosen first day.
+const weekShift = () => ({ sun: 0, sat: 1 })[state.settings.weekStart] ?? 6;
+const weekStart = k => addDays(k, -((fromKey(k).getDay() + weekShift()) % 7));
 const weekOf = key => { const first = weekStart(key); return Array.from({ length: 7 }, (_, i) => addDays(first, i)); };
 const monthStart = k => k.slice(0, 7) + '-01';
 const mon3 = d => MONTHS[d.getMonth()].slice(0, 3);
@@ -107,7 +108,8 @@ function migrate(s) {
   st.view ||= 'all'; st.workStart ??= 9; st.workEnd ??= 18; st.color ||= 'butter';
   if (!['day', 'week', 'month'].includes(st.mode)) st.mode = 'day';
   st.highlighters ||= 'chalk'; st.desk ||= 'paper grey'; st.ruling ||= 'lines'; st.weekStart ||= 'mon';
-  st.dayBook ||= { morning: true, schedule: true, mood: true };
+  // The day book is preset: every page, every day.
+  st.dayBook = { morning: true, schedule: true, mood: true };
   const prefs = st.paperPreferences ||= {};
   if (!['page', 'spread'].includes(prefs.desktop)) prefs.desktop = 'spread';
   if (!['page', 'spread'].includes(prefs.phone)) prefs.phone = 'page';
@@ -941,10 +943,10 @@ function openHabitEditor(key) {
 /* ---------- mini month ---------- */
 function miniCal(key) {
   const d = fromKey(key), y = d.getFullYear(), m = d.getMonth();
-  const first = (new Date(y, m, 1).getDay() + (sundayFirst() ? 0 : 6)) % 7;
+  const first = (new Date(y, m, 1).getDay() + weekShift()) % 7;
   const days = new Date(y, m + 1, 0).getDate();
   const grid = el('div', { class: 'mc-grid' });
-  for (const c of sundayFirst() ? 'SMTWTFS' : 'MTWTFSS') grid.append(el('span', { class: 'mc-h' }, c));
+  for (let i = 0; i < 7; i++) grid.append(el('span', { class: 'mc-h' }, 'SMTWTFS'[(7 - weekShift() + i) % 7]));
   for (let i = 0; i < first; i++) grid.append(el('span'));
   for (let i = 1; i <= days; i++) {
     const k = keyOf(new Date(y, m, i));
@@ -1005,7 +1007,7 @@ function weekListRow(key) {
 function monthCells(first) {
   const date = fromKey(first);
   const count = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  const offset = (date.getDay() + (sundayFirst() ? 0 : 6)) % 7;
+  const offset = (date.getDay() + weekShift()) % 7;
   const weeks = Math.ceil((offset + count) / 7);
   const start = weekStart(first);
   return { count, weeks, keys: Array.from({ length: weeks * 7 }, (_, i) => addDays(start, i)) };
@@ -1803,79 +1805,117 @@ function deleteQuickNote(note) {
   if (surface === 'shelf') renderShelf();
 }
 
-/* ================= settings: a spread at the back of the planner ================= */
-function setRow(name, opts, { dot, note } = {}) {
-  const row = el('div', { class: 'set-row' }, el('span', { class: 'name' }, dot ? el('span', { class: 'dot', style: `--dot:${dot}` }) : null, name), el('span', { class: 'opts' }, opts));
-  return note ? [row, el('p', { class: 'set-note' }, note)] : [row];
-}
-const opt = (text, on, onclick, attrs = {}) => button(text, onclick, { class: `pill${attrs.action ? ' action' : ''}`, 'aria-pressed': String(!!on), ...attrs, action: null });
-const toggleOpt = (on, flip) => opt(on ? 'on' : 'off', on, flip);
-const setGroup = (name, ...rows) => el('div', { class: 'set-group' }, label(name), rows.flat());
+/* ================= settings: a small notepad; your data and quick notes ai are its next sheets ================= */
 const setAndRender = fn => () => { fn(); save(); render(); };
-// Full settings open from the shelf. Inside a notebook, a small card with the everyday few.
-let settingsFull = true;
-function renderSettings() {
-  const s = state.settings;
+let settingsPage = 'main', lastSynced = null, tippedBook = null;
+// A row: a quiet label on the left, the choice on the right.
+const padRow = (name, ...right) => el('div', { class: 'pad-row' }, el('span', { class: 'pad-label' }, name), el('span', { class: 'pad-opts' }, right));
+const padLink = (text, onclick, attrs = {}) => button(text, onclick, { ...attrs, class: `pad-link${attrs.class ? ' ' + attrs.class : ''}` });
+const padQuiet = text => el('span', { class: 'pad-quiet' }, text);
+// Plain words; the chosen one gets the butter highlighter, like today's date.
+function padChoices(label, list, current, pick) {
+  return el('span', { class: 'pad-choices', role: 'group', 'aria-label': label }, list.map(([value, text, mark]) =>
+    button([mark, el('span', { class: 'hl' }, text)], setAndRender(() => pick(value)), { class: 'pad-choice', 'aria-pressed': String(current === value), 'data-k': `${label}:${value}` })));
+}
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+function syncLine() {
+  const { phase, user } = accountStatus;
+  if (!user) return 'on this device only';
+  if (['saving', 'pending', 'loading'].includes(phase)) return 'saving…';
+  if (phase === 'error') return 'offline · safe on this device';
+  return lastSynced ? `synced ${ago(lastSynced)}` : 'synced';
+}
+function accountLine(extra) {
   const user = accountStatus.user;
+  return el('div', { class: 'pad-account' },
+    el('span', { class: 'g-mark', 'aria-hidden': 'true' }, 'G'),
+    el('span', { class: 'who' },
+      el('strong', {}, user?.email || user?.displayName || 'not signed in'),
+      el('span', {}, el('i', { class: `sync-dot${user && accountStatus.phase !== 'error' ? ' ok' : ''}`, 'aria-hidden': 'true' }), syncLine())),
+    extra);
+}
+const turnTo = page => () => { settingsPage = page; renderSettings(); settingsBook.querySelector('.pad-sheet button, .pad-sheet input')?.focus({ preventScroll: true }); };
+const padBack = () => padLink('‹ settings', turnTo('main'), { class: 'pad-back' });
+function renderSettings() {
+  // Keep focus and any half-typed key across redraws.
+  const focusKey = document.activeElement?.dataset?.k, typed = settingsBook.querySelector('input.key')?.value;
+  const sheet = el('section', { class: 'pad-sheet' },
+    settingsPage === 'data' ? dataSheet() : settingsPage === 'ai' ? aiSheet() : mainSheet(state.settings));
+  settingsBook.className = 'notepad';
+  settingsBook.replaceChildren(el('div', { class: 'pad-top', 'aria-hidden': 'true' }), sheet);
+  if (typed) { const input = settingsBook.querySelector('input.key'); if (input) input.value = typed; }
+  if (focusKey) settingsBook.querySelector(`[data-k="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
+}
+function mainSheet(s) {
   const hours = (field, delta) => setAndRender(() => {
     s[field] = clamp(s[field] + delta, field === 'workStart' ? DAY_START : DAY_START + 1, field === 'workStart' ? DAY_END - 1 : DAY_END);
     if (s.workEnd <= s.workStart) { if (field === 'workStart') s.workEnd = s.workStart + 1; else s.workStart = s.workEnd - 1; }
   });
-  const dayRows = [
-    ...setRow('hours shown', [['all', 'all day'], ['work', 'work'], ['off', 'after work']].map(([v, t]) => opt(t, s.view === v, setAndRender(() => { s.view = v; })))),
-    ...(s.view === 'all' ? [] : setRow('work hours', [opt('‹', false, hours('workStart', -1), { 'aria-label': 'Start earlier' }), el('span', { class: 'mono', style: 'color:var(--ink)' }, fmtHour(s.workStart).toUpperCase()), opt('›', false, hours('workStart', 1), { 'aria-label': 'Start later' }),
-      el('span', { class: 'ink-3' }, '–'), opt('‹', false, hours('workEnd', -1), { 'aria-label': 'End earlier' }), el('span', { class: 'mono', style: 'color:var(--ink)' }, fmtHour(s.workEnd).toUpperCase()), opt('›', false, hours('workEnd', 1), { 'aria-label': 'End later' })])),
-    ...setRow('week starts on', [['mon', 'mon'], ['sun', 'sun']].map(([v, t]) => opt(t, s.weekStart === v, setAndRender(() => { s.weekStart = v; })))),
-    ...setRow('writing lines', ['lines', 'dots', 'blank'].map(v => opt(v, s.ruling === v, setAndRender(() => { s.ruling = v; })))),
+  const step = (text, field, delta, label) => padLink(text, hours(field, delta), { class: 'quiet', 'aria-label': label, 'data-k': `${field}${delta}` });
+  const paper = kind => el('i', { class: `paper-mark ${kind}`, 'aria-hidden': 'true' });
+  return [
+    el('h2', { class: 'pad-title' }, 'settings'),
+    el('div', { class: 'pad-rows' },
+      padRow('hours', padChoices('Hours shown', [['all', 'all day'], ['work', 'work'], ['off', 'after work']], s.view, v => { s.view = v; })),
+      s.view === 'all' ? null : padRow('work hours',
+        step('‹', 'workStart', -1, 'Start earlier'), el('span', { class: 'pad-hour' }, fmtHour(s.workStart)), step('›', 'workStart', 1, 'Start later'),
+        el('span', { class: 'pad-sep' }, '–'),
+        step('‹', 'workEnd', -1, 'End earlier'), el('span', { class: 'pad-hour' }, fmtHour(s.workEnd)), step('›', 'workEnd', 1, 'End later')),
+      padRow('weeks start', padChoices('Week starts on', [['mon', 'mon'], ['sat', 'sat'], ['sun', 'sun']], s.weekStart, v => { s.weekStart = v; })),
+      padRow('paper', padChoices('Writing paper', [['lines', 'lined'], ['dots', 'dots'], ['blank', 'blank']].map(([v, t]) => [v, t, paper(v)]), s.ruling, v => { s.ruling = v; }))),
+    shelfPicker(),
+    padRow('quick notes sort', padLink(quickSummary(), turnTo('ai'), { 'data-k': 'to-ai' })),
+    accountLine(padLink('your data ›', turnTo('data'), { class: 'quiet', 'data-k': 'to-data' })),
   ];
-  const scrolls = [...settingsBook.querySelectorAll('.page')].map(p => p.scrollTop);
-  settingsBook.dataset.cover = 'planner';
-  if (!settingsFull) {
-    const card = el('section', { class: 'page' },
-      head({ num: 'settings', stack: [BOOKS[surface === 'journal' ? 'reading' : surface]?.name.toUpperCase() || '', ''] }),
-      setGroup('day and paper', ...dayRows),
-      button('all settings on the shelf ↗', () => { closeSettings(true); surface = 'shelf'; render(); openSettings(); }, { class: 'quiet', style: 'align-self:flex-start;min-height:36px' }));
-    settingsBook.className = 'book settings-book single compact';
-    settingsBook.replaceChildren(card);
-    return;
+}
+function quickSummary() {
+  if (!state.ai.enabled) return ['by hand', el('span', { class: 'pad-arrow' }, '›')];
+  const key = aiKey();
+  if (key) return [aiName(key.provider), el('span', { class: 'pad-arrow' }, '›')];
+  if (!account?.free.available()) return ['keywords', el('span', { class: 'pad-arrow' }, '›')];
+  return ['claude', freeLeft == null ? null : el('span', { class: 'pad-badge' }, freeLeft ? `${freeLeft} FREE` : 'ALL USED'), el('span', { class: 'pad-arrow' }, '›')];
+}
+function dataSheet() {
+  const user = accountStatus.user, cal = calendarStatus, calConnected = !!state.googleCalendar.updatedAt;
+  const signOut = async () => { try { await account.signOut(); } catch (error) { toast(String(error.message || 'could not sign out').toLowerCase()); } };
+  const calendar = cal.phase === 'unconfigured' ? [padQuiet('not set up')]
+    : ['signin', 'unavailable'].includes(cal.phase) ? [padQuiet('sign in first')]
+    : [padLink(cal.phase === 'connected' ? 'refresh' : calConnected ? 'reconnect' : 'connect', connectCalendar, { disabled: ['loading', 'syncing'].includes(cal.phase) || undefined, 'data-k': 'cal' }),
+      calConnected ? padLink('disconnect', disconnectCalendar, { class: 'quiet' }) : null];
+  return [
+    el('h2', { class: 'pad-title' }, 'your data'),
+    el('div', { class: 'pad-rows' },
+      user ? accountLine(padLink('sign out', signOut, { class: 'quiet' }))
+        : padRow('account', accountStatus.available ? padLink('sign in with google', () => account.signIn()) : padQuiet('sign-in isn’t set up here')),
+      padRow('google calendar', ...calendar),
+      padRow('backups', padLink('download', () => $('#exportBackup').click()), el('span', { class: 'pad-sep' }, '·'), padLink('import', () => $('#importBackup').click())),
+      account?.recoveryAvailable() ? padRow('recovery copy', padLink('download', () => account.downloadRecovery())) : null),
+    padBack(),
+  ];
+}
+function aiSheet() {
+  const on = state.ai.enabled, key = aiKey(), signedIn = !!account?.secrets.available();
+  const rows = [padRow('sort with ai', button('', setAndRender(() => { state.ai.enabled = !on; state.ai.chosen = true; }),
+    { class: 'pad-switch', role: 'switch', 'aria-checked': String(on), 'aria-label': 'Sort quick notes with ai', 'data-k': 'ai-switch' }))];
+  if (on && !key && signedIn && freeLeft != null) {
+    rows.push(el('div', { class: 'pad-meter' }, el('span', { class: 'bar' }, el('i', { style: `width:${freeLeft * 2}%` })),
+      el('span', {}, freeLeft ? `${freeLeft} OF 50 FREE` : 'ALL 50 FREE USED')));
   }
-  const name = editable('span', '', state.user.name, 'your name', v => { state.user.name = v; save(); rememberWelcome(v); }, { label: 'Your name' });
-  name.style.fontWeight = '500';
-  const accountNote = user
-    ? 'signed in with google. your notebooks save to your account and to this device.'
-    : accountStatus.available ? 'your pages stay on this device until you sign in.'
-      : 'your pages stay on this device. google sign-in isn’t set up yet.';
-  const cal = calendarStatus, calConnected = !!state.googleCalendar.updatedAt;
-  const left = el('section', { class: 'page' },
-    head({ num: 'settings' }),
-    setGroup('on the shelf', shelfPicker()),
-    setGroup('day book', ...setRow('pages', [['morning', 'morning pages'], ['schedule', 'schedule'], ['mood', 'mood + gratitude']]
-      .map(([k, t]) => opt(t, s.dayBook[k], setAndRender(() => { s.dayBook[k] = !s.dayBook[k]; }))))),
-    setGroup('quick notes', ...quickNoteSettings()));
-  const right = el('section', { class: 'page' },
-    head({ num: 'settings', ghost: true }),
-    setGroup('day and paper', ...dayRows),
-    setGroup('you',
-      ...setRow(el('span', {}, name, user?.email ? ` · ${user.email}` : ''), [
-        user ? opt('account', false, () => account.open(), { action: true }) : accountStatus.available ? opt('sign in with google', true, () => account.signIn()) : null,
-        user ? opt('sign out', false, () => $('#cloudSignOut').click(), { action: true }) : null,
-      ], { note: accountNote }),
-      ...setRow('google calendar', [
-        cal.phase === 'unconfigured' ? el('span', { class: 'ink-3' }, 'not set up') : cal.phase === 'signin' || cal.phase === 'unavailable' ? el('span', { class: 'ink-3' }, 'sign in first') : opt(cal.phase === 'connected' ? 'refresh' : calConnected ? 'reconnect' : 'connect', calConnected, connectCalendar, { disabled: ['loading', 'syncing', 'unavailable'].includes(cal.phase) }),
-        calConnected ? opt('disconnect', false, disconnectCalendar, { action: true }) : null,
-      ], { note: 'optional and read-only. google asks for calendar access separately, and may say the app isn’t verified yet.' }),
-      ...setRow('backups', [opt('export .json', false, () => $('#exportBackup').click(), { action: true }), opt('import', false, () => $('#importBackup').click(), { action: true })],
-        { note: 'imports keep your existing entries.' })));
-  settingsBook.className = `book settings-book ${phone.matches ? 'single stacked' : 'spread'}`;
-  settingsBook.replaceChildren(left, right);
-  settingsBook.querySelectorAll('.page').forEach((p, i) => { p.scrollTop = scrolls[i] || 0; });
+  if (key) rows.push(padRow(`${aiName(key.provider)} key`, padLink('disconnect', disconnectAi, { class: 'quiet' })));
+  else if (signedIn) {
+    const input = el('input', { type: 'password', class: 'key', placeholder: 'claude or openai', 'aria-label': 'Claude or OpenAI API key', autocomplete: 'off' });
+    const connect = () => connectAi(input.value, input);
+    input.onkeydown = e => { if (e.key === 'Enter') connect(); };
+    rows.push(padRow('your own key', input, padLink('save', connect)));
+  } else rows.push(padRow('your own key', accountStatus.available ? padLink('sign in first', () => account.signIn()) : padQuiet('sign in on the live site')));
+  return [el('h2', { class: 'pad-title' }, 'quick notes ai'), el('div', { class: 'pad-rows' }, rows), padBack()];
 }
 /* settings rise from the bottom over whatever is open; click outside to put them away */
 const settingsLayer = $('#settingsLayer'), settingsBook = $('#settingsBook');
 let settingsOpen = false;
 function openSettings() {
   closeQuickNote(); closeStack(true); closePopover();
-  settingsFull = surface === 'shelf' || phone.matches;
+  settingsPage = 'main';
   settingsOpen = true; settingsLayer.hidden = false; settingsLayer.classList.remove('closing');
   renderSettings(); renderBar();
   scene.inert = true; shelfEl.inert = true;
@@ -1905,43 +1945,17 @@ function closeSettings(instant = false) {
 }
 const toggleSettings = () => (settingsOpen ? closeSettings() : openSettings());
 settingsLayer.addEventListener('pointerdown', e => { if (e.target === settingsLayer) closeSettings(); });
-// A little pile of spines: tap one to put it on the shelf or take it off.
+// The shelf as two columns of spines, named; tap one to put it away or bring it back.
 function shelfPicker() {
-  const on = PILE.filter(k => state.shelf[k]).length;
-  const pile = el('div', { class: 'mini-pile', role: 'group', 'aria-label': 'Books on the shelf' },
-    PILE.map((k, i) => button(el('span', { class: 'tag' }, BOOKS[k].name), setAndRender(() => { state.shelf[k] = !state.shelf[k]; }), {
-      class: `mini-spine${state.shelf[k] ? '' : ' off'}${k === 'daybook' ? ' binder-spine' : ''}`,
-      style: `--cover:${BOOKS[k].cover};--w:${Math.round(BOOKS[k].w * .5)}px;--r:${[-1.2, .8, -.4, 1, -.8, .5, -.3][i]}deg`,
-      'aria-pressed': String(!!state.shelf[k]), title: state.shelf[k] ? `take ${BOOKS[k].name} off the shelf` : `put ${BOOKS[k].name} on the shelf`,
+  const light = new Set(['reading']);
+  const grid = el('div', { class: 'pad-shelf', role: 'group', 'aria-label': 'Books on the shelf' },
+    [...PILE].reverse().map(k => button(BOOKS[k].name, setAndRender(() => { state.shelf[k] = !state.shelf[k]; tippedBook = k; }), {
+      class: `pad-book${state.shelf[k] ? '' : ' off'}${light.has(k) ? ' light' : ''}${tippedBook === k ? ' tipped' : ''}`,
+      style: `--cover:${BOOKS[k].cover}`, 'aria-pressed': String(!!state.shelf[k]), 'data-k': `book:${k}`,
+      title: state.shelf[k] ? `take ${BOOKS[k].name} off the shelf` : `put ${BOOKS[k].name} on the shelf`,
     })));
-  return [pile, el('p', { class: 'set-note' }, `${on} of ${PILE.length} on the shelf. tap a book to put it away or bring it back; nothing inside is lost.`)];
-}
-function quickNoteSettings() {
-  const ai = state.ai.enabled, key = aiKey(), signedIn = !!account?.secrets.available();
-  const rows = [...setRow('include quick notes with ai', [toggleOpt(ai, setAndRender(() => { state.ai.enabled = !ai; state.ai.chosen = true; }))], {
-    note: ai ? 'on: each quick note is read by ai and filed into the right book. the original words are always kept in the sticky file.'
-      : 'off: quick notes stay analog. they wait in the sticky file, just as you wrote them, until you file them yourself.' })];
-  if (!ai) return rows;
-  if (!key && account?.free.available()) {
-    rows.push(...setRow('free sorts', [el('span', { class: 'mono', style: 'color:var(--ink)' }, freeLeft == null ? '…' : freeLeft ? `${freeLeft} OF 50 LEFT` : 'ALL 50 USED')],
-      { note: freeLeft === 0 ? 'you’ve used dayblock’s 50 free sorts. add your own key below to keep sorting; notes still file by keywords meanwhile.'
-        : 'dayblock pays for your first 50 sorts, using claude. after that, add your own claude or openai key below.' }));
-  }
-  if (key) {
-    rows.push(...setRow(`${aiName(key.provider)} · connected`, [opt('disconnect', false, disconnectAi, { action: true })],
-      { note: 'saved to your account. quick notes are sorted on the server; the key is never in this browser’s storage, backups, or exports.' }));
-  } else if (!signedIn) {
-    rows.push(...setRow('your own ai key', accountStatus.available ? [opt('sign in with google', true, () => account.signIn())] : [],
-      { note: accountStatus.available ? 'sign in for 50 free sorts, or to keep a claude or openai key in your account. until then, notes file by keywords.'
-        : 'open the live site to sign in and connect a key. local notes still file by keywords.' }));
-  } else {
-    const input = el('input', { type: 'password', class: 'key', placeholder: 'claude or openai key', 'aria-label': 'Claude or OpenAI API key', autocomplete: 'off' });
-    const connect = () => connectAi(input.value, input);
-    input.onkeydown = e => { if (e.key === 'Enter') connect(); };
-    rows.push(...setRow('ai key', [input, opt('connect →', true, connect)],
-      { note: 'paste a claude key (starts sk-ant-) or an openai key (starts sk-). it is saved to your account, not this browser.' }));
-  }
-  return rows;
+  tippedBook = null;
+  return grid;
 }
 async function connectAi(value, input) {
   const key = (value || '').trim(), provider = Q.providerOf(key);
@@ -2303,10 +2317,15 @@ account = window.DayblockAccount.create({
   getState: () => state,
   blank: () => migrate({ ...defaultState(), onboarded: true }),
   askImport,
+  notify: text => toast(text),
   onReport(status) {
     const changed = status.user?.uid !== accountStatus.user?.uid || status.available !== accountStatus.available;
     accountStatus = { ...accountStatus, ...status };
-    if (!changed) return;
+    if (status.phase === 'synced') lastSynced = Date.now();
+    if (!changed) {
+      if (settingsOpen && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) renderSettings();
+      return;
+    }
     calendarClient?.prepare();
     syncAiKey(status.user);
     refreshFreeSorts();
