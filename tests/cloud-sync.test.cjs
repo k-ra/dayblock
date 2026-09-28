@@ -51,6 +51,29 @@ test('import preserves conflicting day notes and books; repeated import is idemp
   assert.equal(merged.trackers.reading.length, 2);
   assert.deepEqual(D.merge(merged, b), merged);
 });
+test('import does not revive a completed todo from a stale carried browser copy', () => {
+  const cloud = withNote(''), browser = withNote('');
+  cloud.days['2026-09-21'].todos.push({ id: 'task-1', text: 'book dentist', done: true, color: 'none' });
+  browser.days['2026-09-22'] = { title: '', blocks: [], todos: [{ id: 'task-1', text: 'book dentist', done: false, from: '2026-09-21', color: 'none' }], notes: '', done: '' };
+  const merged = D.merge(cloud, browser);
+  assert.deepEqual(Object.values(merged.days).flatMap(day => day.todos).map(todo => [todo.id, todo.done]), [['task-1', true]]);
+  assert.equal(merged.days['2026-09-22'].todos.length, 0);
+});
+test('import keeps a newly completed todo and later active todos by stable id', () => {
+  const cloud = withNote(''), browser = withNote('');
+  cloud.days['2026-09-21'].todos.push({ id: 'done-later', text: 'write outline', done: false });
+  cloud.days['2026-09-21'].todos.push({ id: 'carried', text: 'buy tea', done: false });
+  browser.days['2026-09-22'] = { title: '', blocks: [], todos: [
+    { id: 'done-later', text: 'write outline', done: true, from: '2026-09-21' },
+    { id: 'carried', text: 'buy tea', done: false, from: '2026-09-21' },
+    { id: 'different', text: 'buy tea', done: false },
+  ], notes: '', done: '' };
+  const merged = D.merge(cloud, browser);
+  assert.equal(merged.days['2026-09-21'].todos.length, 0);
+  assert.deepEqual(merged.days['2026-09-22'].todos.map(todo => [todo.id, todo.done]), [
+    ['done-later', true], ['carried', false], ['different', false],
+  ]);
+});
 test('changed habit imports preserve their matching history', () => {
   const a = blank(), b = blank();
   a.habits = [{ id: 'h', name: 'Walk' }]; b.habits = [{ id: 'h', name: 'Read' }];
@@ -110,6 +133,17 @@ test('a list item deleted on one device and untouched on the other stays deleted
   const theirs = D.portable(start); theirs.trackers.ideas.push({ id: 'c', text: 'new' });
   h.edit(mine); h.advance(theirs); await h.controller.flush(); await h.controller.flush();
   assert.deepEqual(h.record().data.trackers.ideas.map(i => i.id).sort(), ['a', 'c']);
+});
+test('a carried todo and a completed todo on different devices do not become two tasks', () => {
+  const base = withNote('');
+  base.days['2026-09-21'].todos.push({ id: 'task-1', text: 'call dentist', done: false });
+  const local = D.portable(base), cloud = D.portable(base);
+  local.days['2026-09-21'].todos = [];
+  local.days['2026-09-22'] = { title: '', blocks: [], todos: [{ id: 'task-1', text: 'call dentist', done: false, from: '2026-09-21' }], notes: '', done: '' };
+  cloud.days['2026-09-21'].todos[0].done = true;
+  const merged = D.merge3(D.portable(base), local, cloud);
+  assert.deepEqual(Object.values(merged.days).flatMap(day => day.todos).map(todo => [todo.id, todo.done]), [['task-1', true]]);
+  assert.equal(merged.days['2026-09-22'].todos.length, 0);
 });
 test('offline changes persist per account and retry when online', async () => {
   const h = harness({ cloud: withNote('start'), choose: false });

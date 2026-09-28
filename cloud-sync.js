@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   const D = typeof module !== 'undefined' && module.exports ? require('./cloud-data.js') : root.DayblockCloudData;
-  function create({ remote, storage, getState, apply, blank, chooseImport, status, canApply = () => true, delay = 1200 }) {
+  function create({ remote, storage, getState, apply, blank, chooseImport, status, canApply = () => true, delay = 350 }) {
     const guestKey = 'spread-planner.v1';
     let user = null, cache = null, epoch = 0, timer = null, flight = null, phase = 'local';
     const key = id => `dayblock.account.v1:${id}`;

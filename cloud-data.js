@@ -85,6 +85,29 @@
   function merge(existing, incoming) {
     const a = portable(existing), b = portable(incoming);
     if (a.desk && b.desk) b.desk.items = b.desk.items.filter(item => item.type === 'sticky' || !a.desk.items.some(other => other.type === item.type));
+    // Importing a browser copy must not fork the same todo into an unchecked
+    // carried copy and a completed copy. A stable id plus unchanged wording
+    // identifies the same item, even when it moved to a different day.
+    const todoById = new Map();
+    for (const [day, data] of Object.entries(a.days)) for (const todo of data.todos) todoById.set(todo.id, { day, todo });
+    for (const [day, data] of Object.entries(b.days)) {
+      data.todos = data.todos.filter(todo => {
+        const match = todoById.get(todo.id);
+        if (!match || match.todo.text.trim() !== todo.text.trim()) return true;
+        const shouldMove = (!match.todo.done && todo.done) || (!match.todo.done && !todo.done && day > match.day);
+        if (shouldMove) {
+          const oldDay = a.days[match.day];
+          oldDay.todos = oldDay.todos.filter(item => item !== match.todo);
+          const destination = (a.days[day] ||= { title: '', blocks: [], todos: [], notes: '', done: '' });
+          const originalFrom = match.todo.from || todo.from;
+          Object.assign(match.todo, clone(todo), { done: !!todo.done });
+          if (originalFrom) match.todo.from = originalFrom;
+          destination.todos.push(match.todo);
+          match.day = day;
+        }
+        return false;
+      });
+    }
     // A changed habit gets its own copy; remap the imported checkmarks with it.
     for (const habit of b.habits || []) {
       const match = a.habits?.find(item => item.id === habit.id);
@@ -130,6 +153,30 @@
     const any = Object.values(counts).some(Boolean) || (other && hasContent(b));
     return { ...counts, any };
   }
+  function reconcileTodoDates(data) {
+    const seen = new Map();
+    for (const day of Object.keys(data.days || {}).sort()) {
+      const todos = data.days[day].todos;
+      for (let i = todos.length - 1; i >= 0; i--) {
+        const todo = todos[i], previous = seen.get(todo.id);
+        // A changed title may be an intentional new version; don't erase it.
+        if (!previous || previous.todo.text.trim() !== todo.text.trim()) {
+          seen.set(todo.id, { day, todo });
+          continue;
+        }
+        if (todo.done && !previous.todo.done) {
+          const prior = data.days[previous.day].todos;
+          prior.splice(prior.indexOf(previous.todo), 1);
+          seen.set(todo.id, { day, todo });
+        } else if (!previous.todo.done && !todo.done && day > previous.day) {
+          const prior = data.days[previous.day].todos;
+          prior.splice(prior.indexOf(previous.todo), 1);
+          seen.set(todo.id, { day, todo });
+        } else todos.splice(i, 1);
+      }
+    }
+    return data;
+  }
   // Three-way merge for automatic sync: compared with the last synced copy
   // (base), a change made on only one device wins cleanly; a field changed on
   // both keeps both; list items (todos, blocks, ideas…) merge one by one by id.
@@ -171,7 +218,7 @@
       }
       return clone(l);
     };
-    return validate(pick(base, local, cloud));
+    return validate(reconcileTodoDates(pick(base, local, cloud)));
   }
   function serialize(data) {
     const payload = JSON.stringify(portable(data));

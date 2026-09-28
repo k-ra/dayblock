@@ -51,6 +51,12 @@ notebooks, quick notes). What changed or moved is listed in
 - Google Calendar (read-only) comes with Google sign-in: see
   [AUTH-HANDBOOK.md](AUTH-HANDBOOK.md) for the one-time setup.
 - Export/import JSON backups. Imports keep existing entries.
+- Signed-in edits save on this device immediately and sync after a short pause;
+  checking a todo starts a cloud write at once. Hiding or closing the tab also
+  starts a best-effort write. If the browser ends it early, pending edits remain
+  in this device's account cache and retry when Dayblock opens again. A clean
+  device cache loads the cloud copy; browser-only notebooks are imported only
+  after you choose to bring them into the account.
 
 ## Try it
 

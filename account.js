@@ -111,6 +111,9 @@ window.DayblockAccount = {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) sync?.flush(); else sync?.refresh();
     });
+    // Closing/navigation may end async work early, so the durable device cache
+    // remains the fallback. Start the write as soon as pagehide is signalled.
+    window.addEventListener('pagehide', () => { void sync?.flush(); });
     window.addEventListener('beforeunload', event => { if (sync?.pending()) { event.preventDefault(); event.returnValue = ''; } });
     setInterval(() => { if (!document.hidden) sync?.refresh(); }, 60000);
     start();
@@ -135,6 +138,7 @@ window.DayblockAccount = {
     };
     return { calendar, secrets, free, open: () => dialog.showModal(), signIn: () => $('#cloudSignIn').click(), available: () => !!remote,
       signOut: () => sync?.currentUser() ? sync.signOut() : remote?.signOut(),
+      syncNow: () => sync?.flush(),
       recoveryAvailable: () => !!sync?.recovery(),
       downloadRecovery: () => { const data = sync?.recovery(); if (data) download(data, 'recovery'); },
       save(data) {

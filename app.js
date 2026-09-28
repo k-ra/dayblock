@@ -865,7 +865,7 @@ function todoList(list, container, { onChange, focusKey, limit = 0, more } = {})
     const i = list.indexOf(t);
     const li = el('li', { class: `todo${t.done ? ' done' : ''}`, 'data-id': t.id });
     if (t.from) li.append(el('span', { class: 'carried', title: `carried from ${shortDate(t.from)}` }, '→'));
-    li.append(button(t.done ? '✓' : '', () => { t.done = !t.done; onChange(); render(); }, { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', 'aria-pressed': String(!!t.done) }));
+    li.append(button(t.done ? '✓' : '', () => { t.done = !t.done; onChange(); void account?.syncNow(); render(); }, { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', 'aria-pressed': String(!!t.done) }));
     const txt = editable('span', `todo-text hl-${t.color || 'none'}${t.color && t.color !== 'none' ? ' hl' : ''}`, t.text, '…', v => { t.text = v; onChange(); }, {
       label: 'Todo',
       onEnter() { const n = { id: uid(), text: '', done: false, color: 'none' }; list.splice(i + 1, 0, n); onChange(); render(); focusItem(n.id); },
