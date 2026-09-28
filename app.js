@@ -120,6 +120,7 @@ function migrate(s) {
   s.months ||= {}; s.weeks ||= {};
   s.trackers ||= {}; s.trackers.ideas ||= []; s.trackers.reading ||= []; s.trackers.recipes ||= [];
   s.shopping ||= []; s.gratitude ||= {}; s.moodBar ||= {}; s.morningPages ||= {};
+  s.todoTombstones ||= {};
   s.quickNotes ||= []; s.quickDraft ??= '';
   // The shared catchall became the sticky file: its notes move there, unsorted.
   s.catchall ||= { draft: '', items: [] };
@@ -141,7 +142,7 @@ function migrate(s) {
   s.onboarded ??= false;
   s.favoriteColor ||= '';
   s.googleCalendar ||= { events: [], updatedAt: null };
-  return s;
+  return window.DayblockCloudData.pruneDeletedTodos(window.DayblockCloudData.repairImportedTodoCopies(s));
 }
 function load() {
   try {
@@ -239,7 +240,10 @@ function carryOver() {
     const d = state.days[k];
     const carry = d.todos.filter(t => !t.done);
     if (!carry.length) continue;
-    for (const t of carry) { t.from ||= k; target.todos.push(t); }
+    for (const t of carry) {
+      if (state.todoTombstones?.[t.id] || target.todos.some(item => item.id === t.id)) continue;
+      t.from ||= k; target.todos.push(t);
+    }
     d.todos = d.todos.filter(t => t.done);
     moved = true;
   }
@@ -820,7 +824,10 @@ function openBlockEditor(key, block) {
     if (+end.value <= +start.value || !title.value.trim()) { error.textContent = 'add a title and an end time after the start.'; return; }
     if (taskDraft.value.trim() && tasks.length < 20) tasks.push({ id: uid(), text: taskDraft.value.trim(), done: false });
     block.title = title.value.trim(); block.start = +start.value; block.end = +end.value; block.color = color;
-    block.tasks = tasks.map(task => ({ id: task.id, text: task.text.trim(), done: !!task.done })).filter(task => task.text);
+    const savedTasks = tasks.map(task => ({ id: task.id, text: task.text.trim(), done: !!task.done })).filter(task => task.text);
+    const kept = new Set(savedTasks.map(task => task.id));
+    for (const task of block.tasks || []) if (!kept.has(task.id)) (state.todoTombstones ||= {})[task.id] = true;
+    block.tasks = savedTasks;
     state.settings.color = color;
     fresh.delete(block.id); save(); dialog.close(); render();
   };
@@ -856,6 +863,10 @@ function openCalendarEvent(event) {
 }
 
 /* ---------- todos ---------- */
+function removeTodo(list, index) {
+  const [todo] = list.splice(index, 1);
+  if (todo?.id) (state.todoTombstones ||= {})[todo.id] = true;
+}
 function todoList(list, container, { onChange, focusKey, limit = 0, more } = {}) {
   const ul = el('ul', { class: 'todos' });
   const focusItem = id => { const t = $(`.todos[data-list="${focusKey}"] [data-id="${id}"] .todo-text`); t && focusEditable(t); };
@@ -869,11 +880,11 @@ function todoList(list, container, { onChange, focusKey, limit = 0, more } = {})
     const txt = editable('span', `todo-text hl-${t.color || 'none'}${t.color && t.color !== 'none' ? ' hl' : ''}`, t.text, '…', v => { t.text = v; onChange(); }, {
       label: 'Todo',
       onEnter() { const n = { id: uid(), text: '', done: false, color: 'none' }; list.splice(i + 1, 0, n); onChange(); render(); focusItem(n.id); },
-      onEmptyBackspace() { list.splice(i, 1); onChange(); render(); const prev = list[i - 1]; prev && focusItem(prev.id); },
+      onEmptyBackspace() { removeTodo(list, i); onChange(); render(); const prev = list[i - 1]; prev && focusItem(prev.id); },
     });
     li.append(txt);
     if (t.color !== undefined) li.append(swatchButton(t.color, c => { t.color = c; onChange(); render(); }, { withNone: true, row: true }));
-    li.append(delButton(() => { list.splice(i, 1); onChange(); render(); }));
+    li.append(delButton(() => { removeTodo(list, i); onChange(); render(); }));
     ul.append(li);
   });
   container.append(ul);
@@ -1431,7 +1442,7 @@ function renderRecipes() {
   }
   const shop = el('div', { class: 'section' }, label('shopping'));
   todoList(state.shopping, shop, { onChange: save, focusKey: 'shopping' });
-  if (state.shopping.some(i => i.done)) shop.append(button('clear checked', () => { state.shopping = state.shopping.filter(i => !i.done); save(); render(); }, { class: 'add' }));
+  if (state.shopping.some(i => i.done)) shop.append(button('clear checked', () => { for (let i = state.shopping.length - 1; i >= 0; i--) if (state.shopping[i].done) removeTodo(state.shopping, i); save(); render(); }, { class: 'add' }));
   contents.append(shop);
 
   const page = el('section', { class: 'page', 'aria-label': 'Recipe' });
@@ -2129,31 +2140,6 @@ function signInNudge() {
       hole('stay on this device', () => { try { localStorage.setItem(STAY_LOCAL, '1'); } catch (_) { /* asks again next time */ } closeGreeting(); }))));
   onboardEl.querySelector('button').focus();
 }
-// The one import question: clear, once per account on this device, and only
-// about pages that aren't already in the account.
-function describePages(fresh) {
-  const n = (count, one, many) => count ? `${count} ${count === 1 ? one : many}` : '';
-  const parts = [n(fresh.days, 'day of plans', 'days of plans'), n(fresh.ideas, 'idea', 'ideas'), n(fresh.books, 'book', 'books'),
-    n(fresh.recipes, 'recipe', 'recipes'), n(fresh.quickNotes, 'quick note', 'quick notes')].filter(Boolean);
-  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] || 'a few pages';
-}
-function askImport(user, guest, fresh = { any: true }) {
-  return new Promise(resolve => {
-    const layer = el('div', { class: 'import-layer' });
-    const answer = yes => { layer.remove(); resolve(yes); };
-    const card = el('div', { class: 'postit import-card', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Bring this browser’s pages into your account?' },
-      el('p', { class: 'mono label' }, 'one quick thing'),
-      el('p', {}, `this browser has ${describePages(fresh)} that ${fresh.days + fresh.ideas + fresh.books + fresh.recipes + fresh.quickNotes === 1 ? 'isn’t' : 'aren’t'} in your account yet.`),
-      el('p', {}, `add them to ${user.email || 'your account'}? nothing already in your account is replaced, and you won’t be asked again on this device.`),
-      el('div', { class: 'import-actions' },
-        button('yes, bring them', () => answer(true), { class: 'pill on' }),
-        button('no, just my account', () => answer(false), { class: 'pill' })));
-    layer.append(card);
-    document.body.append(layer);
-    card.querySelector('button').focus();
-  });
-}
-
 /* ================= the bottom bar ================= */
 function renderBar() {
   const items = [];
@@ -2316,7 +2302,6 @@ calendarClient.prepare();
 account = window.DayblockAccount.create({
   getState: () => state,
   blank: () => migrate({ ...defaultState(), onboarded: true }),
-  askImport,
   notify: text => toast(text),
   onReport(status) {
     const changed = status.user?.uid !== accountStatus.user?.uid || status.available !== accountStatus.available;

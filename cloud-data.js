@@ -25,6 +25,7 @@
       for (const field of ['title', 'done']) if (day[field] !== undefined && typeof day[field] !== 'string') throw new Error('Invalid day text.');
       if (day.notes !== undefined && typeof day.notes !== 'string' && !Array.isArray(day.notes)) throw new Error('Invalid day notes.');
     }
+    if (data.todoTombstones !== undefined && (!object(data.todoTombstones) || Object.entries(data.todoTombstones).some(([id, deleted]) => !id || deleted !== true))) throw new Error('Invalid removed todos.');
     for (const list of [data.habits, data.desk?.items, data.catchall?.items, data.trackers?.ideas, data.trackers?.reading]) {
       if (list !== undefined && (!Array.isArray(list) || list.some(item => !object(item) || typeof item.id !== 'string'))) throw new Error('Invalid notebook entries.');
     }
@@ -42,7 +43,20 @@
     delete copy.googleCalendar;
     delete copy.settings.paperPreferences;
     for (const day of Object.values(copy.days)) if (Array.isArray(day.notes)) day.notes = day.notes.map(note => note.text || '').join('\n');
-    return copy;
+    return pruneDeletedTodos(repairImportedTodoCopies(copy));
+  }
+  // A removal is a durable fact, not just an absent array entry. Otherwise an
+  // older browser snapshot can put a deleted task back on the page at sign-in.
+  function pruneDeletedTodos(data) {
+    const removed = data.todoTombstones || {};
+    const keep = item => !removed[item.id];
+    for (const day of Object.values(data.days || {})) {
+      day.todos = day.todos.filter(keep);
+      for (const block of day.blocks) if (Array.isArray(block.tasks)) block.tasks = block.tasks.filter(keep);
+    }
+    if (Array.isArray(data.shopping)) data.shopping = data.shopping.filter(keep);
+    for (const recipe of data.trackers?.recipes || []) if (Array.isArray(recipe.ingredients)) recipe.ingredients = recipe.ingredients.filter(keep);
+    return data;
   }
   function canonical(value) {
     if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -107,6 +121,19 @@
         }
         return false;
       });
+      // A block with the same identity and schedule is one block, even if a
+      // checklist step was checked or removed on the other device.
+      data.blocks = data.blocks.filter(block => {
+        const match = a.days[day]?.blocks.find(other => other.id === block.id && other.title === block.title && other.start === block.start && other.end === block.end);
+        if (!match) return true;
+        const steps = match.tasks ||= [];
+        for (const task of block.tasks || []) {
+          const same = steps.find(other => other.id === task.id);
+          if (same) same.done ||= !!task.done;
+          else steps.push(clone(task));
+        }
+        return false;
+      });
     }
     // A changed habit gets its own copy; remap the imported checkmarks with it.
     for (const habit of b.habits || []) {
@@ -120,7 +147,7 @@
     }
     const result = mergeValue(a, b);
     result.settings = clone(a.settings); // Import content, not another device's preferences.
-    return validate(result);
+    return pruneDeletedTodos(repairImportedTodoCopies(validate(result)));
   }
   // Does this copy hold anything someone wrote? Settings and empty scaffolding don't count.
   function hasContent(data) {
@@ -177,6 +204,18 @@
     }
     return data;
   }
+  function repairImportedTodoCopies(data) {
+    // Older imports sometimes gave a second copy of the same todo an
+    // "-import-..." id. Only collapse a copy when its original id and exact
+    // wording still exist; independent same-worded tasks remain separate.
+    const originals = new Map();
+    for (const day of Object.values(data.days || {})) for (const todo of day.todos) originals.set(todo.id, todo);
+    for (const day of Object.values(data.days || {})) for (const todo of day.todos) {
+      const originalId = todo.id.match(/^(.+)-import-[0-9a-z]+$/)?.[1];
+      if (originalId && originals.get(originalId)?.text.trim() === todo.text.trim()) todo.id = originalId;
+    }
+    return reconcileTodoDates(data);
+  }
   // Three-way merge for automatic sync: compared with the last synced copy
   // (base), a change made on only one device wins cleanly; a field changed on
   // both keeps both; list items (todos, blocks, ideas…) merge one by one by id.
@@ -218,7 +257,7 @@
       }
       return clone(l);
     };
-    return validate(reconcileTodoDates(pick(base, local, cloud)));
+    return pruneDeletedTodos(repairImportedTodoCopies(validate(pick(base, local, cloud))));
   }
   function serialize(data) {
     const payload = JSON.stringify(portable(data));
@@ -230,7 +269,7 @@
     const value = JSON.parse(text);
     return validate(value.format === 'dayblock-backup' ? value.data : value);
   }
-  const api = { clone, validate, portable, canonical, fingerprint, merge, serialize, parseBackup, hasContent, newContent, merge3 };
+  const api = { clone, validate, portable, canonical, fingerprint, merge, serialize, parseBackup, hasContent, newContent, merge3, pruneDeletedTodos, repairImportedTodoCopies };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DayblockCloudData = api;
 })(typeof window !== 'undefined' ? window : globalThis);

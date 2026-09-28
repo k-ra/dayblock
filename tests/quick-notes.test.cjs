@@ -62,6 +62,27 @@ test('filing writes through and unfiling removes only untouched entries', () => 
   assert.equal(Q.file(state, { dest: 'catchall', stored: 'x' }, { uid, today: '2026-09-22' }), null);
 });
 
+test('unfiling an untouched todo leaves a deletion marker for sync', () => {
+  const state = blank();
+  const note = { dest: 'planner', section: 'todo', date: '2026-09-22', stored: 'buy stamps' };
+  note.ref = Q.file(state, note, { uid, today: '2026-09-22' });
+  const id = note.ref.id;
+  Q.unfile(state, note);
+  assert.equal(state.days['2026-09-22'].todos.length, 0);
+  assert.equal(state.todoTombstones[id], true);
+});
+
+test('restoring a quick-note todo finds it after carry-forward', () => {
+  const state = blank();
+  const note = { dest: 'planner', section: 'todo', date: '2026-09-21', stored: 'buy stamps' };
+  note.ref = Q.file(state, note, { uid, today: '2026-09-21' });
+  const [todo] = state.days['2026-09-21'].todos.splice(0, 1);
+  state.days['2026-09-22'] = { title: '', blocks: [], todos: [todo], notes: '', done: '' };
+  Q.unfile(state, note);
+  assert.equal(state.days['2026-09-22'].todos.length, 0);
+  assert.equal(state.todoTombstones[todo.id], true);
+});
+
 test('claude sorting sends only the note and validates the reply', async () => {
   let sent = null;
   const load = async () => ({ default: class { constructor(opts) { assert.equal(opts.apiKey, 'k'); assert.equal(opts.dangerouslyAllowBrowser, undefined); }

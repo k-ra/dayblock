@@ -52,11 +52,15 @@ notebooks, quick notes). What changed or moved is listed in
   [AUTH-HANDBOOK.md](AUTH-HANDBOOK.md) for the one-time setup.
 - Export/import JSON backups. Imports keep existing entries.
 - Signed-in edits save on this device immediately and sync after a short pause;
-  checking a todo starts a cloud write at once. Hiding or closing the tab also
-  starts a best-effort write. If the browser ends it early, pending edits remain
-  in this device's account cache and retry when Dayblock opens again. A clean
-  device cache loads the cloud copy; browser-only notebooks are imported only
-  after you choose to bring them into the account.
+  checking a todo starts a cloud write at once. Dayblock also checks for changes
+  from other devices while open and whenever it reconnects or becomes visible.
+  Offline edits remain on this device and retry when the connection returns; a
+  final upload while closing the tab is only best effort. Browser-only edits
+  automatically join the first account they sync with, including later edits
+  made while signed out. They are not copied into a different Google account.
+  An older browser snapshot already considered by the former import flow is
+  treated as a baseline, not imported again; new edits to it do sync.
+  Removed todos keep a small sync marker so an older device cannot restore them.
 
 ## Try it
 

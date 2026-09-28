@@ -1,13 +1,15 @@
-/* Revision-checked sync that never asks: when two devices edit at once, the
-   edits are merged against the last synced copy (cache.base) and saved again.
-   The guest notebook is never replaced by account data. */
+/* Revision-checked, local-first sync. Each account remembers the last browser-
+   only copy it incorporated, so later signed-out edits can sync automatically
+   without re-importing stale pages on every visit. */
 (function (root) {
   'use strict';
   const D = typeof module !== 'undefined' && module.exports ? require('./cloud-data.js') : root.DayblockCloudData;
-  function create({ remote, storage, getState, apply, blank, chooseImport, status, canApply = () => true, delay = 350 }) {
+  function create({ remote, storage, getState, apply, blank, status, canApply = () => true, delay = 350 }) {
     const guestKey = 'spread-planner.v1';
     let user = null, cache = null, epoch = 0, timer = null, flight = null, phase = 'local';
     const key = id => `dayblock.account.v1:${id}`;
+    const guestBaseKey = id => `dayblock.guest-base.v1:${id}`;
+    const guestOwnerKey = 'dayblock.guest-owner.v1';
     const report = (next, message) => { phase = next; status({ phase, message, user, dirty: !!cache?.dirty }); };
     function read(keyName) { const raw = storage.getItem(keyName); return raw ? JSON.parse(raw) : null; }
     function persist() { if (user && cache) storage.setItem(key(user.uid), JSON.stringify(cache)); }
@@ -76,49 +78,71 @@
       clearTimeout(timer);
       flight = null;
       // Do not let a previous account's in-flight operation update the next one.
+      const previousUser = user;
       user = null; cache = null;
-      try { apply(localize(read(guestKey) || blank())); }
-      catch (error) { report('error', 'Could not open the browser copy. Export your current notebooks before continuing.'); return; }
-      if (!next) { report('local', 'Saved in this browser only'); return; }
+      // Clear another account's pages immediately when identities change.
+      if (previousUser && next && previousUser.uid !== next.uid) {
+        try { apply(localize(read(guestKey) || blank())); }
+        catch (error) { report('error', 'Could not open the browser copy. Export your notebooks before continuing.'); return; }
+      }
+      if (!next) {
+        try { apply(localize(read(guestKey) || blank())); }
+        catch (error) { report('error', 'Could not open the browser copy. Export your current notebooks before continuing.'); return; }
+        report('local', 'Saved in this browser only'); return;
+      }
       report('loading', 'Opening your account…');
       try {
         const saved = read(key(next.uid));
-        if (saved) { D.validate(saved.state); if (!Number.isInteger(saved.revision)) throw new Error('Invalid device cache. Export your browser copy before continuing.'); }
+        if (saved) {
+          D.validate(saved.state);
+          if (!Number.isInteger(saved.revision)) throw new Error('Invalid device cache. Export your browser copy before continuing.');
+          if (saved.base) D.validate(saved.base);
+        }
+        const guest = D.portable(read(guestKey) || blank());
+        // The former one-time import stored the browser snapshot it considered.
+        // Treat it as the first baseline instead of re-importing old, possibly
+        // already completed or deleted, browser pages on upgrade.
+        const guestBase = read(guestBaseKey(next.uid)) || read(`dayblock.imported.v1:${next.uid}`);
+        const guestOwner = read(guestOwnerKey);
+        if (guestBase) D.validate(guestBase);
         let cloud;
         try { cloud = await remote.read(next.uid); }
         catch (error) {
-          if (!saved) throw error;
           if (generation !== epoch) return;
-          user = next; cache = saved; apply(localize(cache.state, cache.state));
-          report('error', 'Offline or cloud unavailable. Showing this account’s device copy; reconnect to sync.');
-          return;
+          if (!saved) throw error;
+          cloud = null;
         }
         if (generation !== epoch) return;
-        if (saved?.dirty) {
-          user = next; cache = saved; apply(localize(cache.state, cache.state));
-          await flush();
-          return;
+        const cloudNeedsRepair = !!cloud?.data && D.canonical(cloud.data) !== D.canonical(D.portable(cloud.data));
+        if (cloudNeedsRepair) storage.setItem(`dayblock.recovery.v1:${next.uid}`, JSON.stringify(cloud.data));
+        // Use the latest signed-in device edit, comparing it with the revision
+        // it last saw. A clean cache only matters if the cloud is unavailable.
+        let value = cloud?.data ? D.portable(cloud.data) : saved ? D.portable(saved.state) : D.portable(blank());
+        if (cloud?.data && saved?.dirty) {
+          storage.setItem(`dayblock.recovery.v1:${next.uid}`, JSON.stringify(saved.state));
+          value = saved.base ? D.merge3(saved.base, D.portable(saved.state), value) : D.merge(value, saved.state);
         }
-        const guest = D.validate(read(guestKey) || blank());
-        const receiptKey = `dayblock.imported.v1:${next.uid}`;
-        let value = cloud.data || blank(), imported = false;
-        // Ask once per account on this device, and only about pages the account
-        // doesn't already have (a browser that was imported before holds copies).
-        const fresh = D.newContent(cloud.data ? D.portable(cloud.data) : null, D.portable(guest));
-        if (!storage.getItem(receiptKey) && D.hasContent(guest) && fresh.any) imported = await chooseImport(next, guest, fresh);
-        if (generation !== epoch) return;
-        // Read again: typing before the import prompt must not be lost.
-        const currentGuest = D.validate(read(guestKey) || guest);
-        if (imported) value = cloud.data ? D.merge(value, currentGuest) : D.portable(currentGuest);
-        const opening = { state: localize(value, saved?.state), revision: cloud.revision, base: cloud.data ? D.portable(cloud.data) : null, dirty: imported || !cloud.data };
-        // Storage failure must not bind the still-visible guest editor to an
-        // account. Finish persisting before switching the editor's ownership.
+        // Read again after network I/O: browser-only writing during sign-in is
+        // an edit too. The previous guest snapshot is its merge baseline.
+        const currentGuest = D.portable(read(guestKey) || guest);
+        if ((!guestOwner || guestOwner === next.uid) && (D.hasContent(currentGuest) || guestBase)) {
+          value = guestBase ? D.merge3(guestBase, currentGuest, value)
+            : cloud?.data || saved ? D.merge(value, currentGuest) : currentGuest;
+        }
+        const baseline = cloud?.data ? D.portable(cloud.data) : saved?.base || null;
+        const dirty = !cloud || cloudNeedsRepair || D.canonical(D.portable(value)) !== D.canonical(baseline);
+        const opening = { state: localize(value, saved?.state), revision: cloud?.revision ?? saved.revision, base: baseline, dirty: dirty || !!saved?.dirty };
+        // Persist the merged account cache before advancing the guest baseline.
+        // If storage is full, keep the browser copy untouched and signed out.
         storage.setItem(key(next.uid), JSON.stringify(opening));
+        if (!guestOwner || guestOwner === next.uid) {
+          storage.setItem(guestBaseKey(next.uid), JSON.stringify(currentGuest));
+          if (!guestOwner && D.hasContent(currentGuest)) storage.setItem(guestOwnerKey, JSON.stringify(next.uid));
+        }
         user = next; cache = opening;
         apply(cache.state);
-        try { storage.setItem(receiptKey, D.canonical(D.portable(currentGuest))); }
-        catch (_) { /* Optional import receipt; notebook data is already saved. */ }
-        if (cache.dirty) await flush();
+        if (cache.dirty && cloud) await flush();
+        else if (!cloud) report('error', 'Offline or cloud unavailable. Showing this account’s device copy; reconnect to sync.');
         else report('synced', 'Saved to your account');
       } catch (error) {
         if (generation === epoch) report('error', error.message || 'Could not open the account. Your browser notebooks are unchanged.');

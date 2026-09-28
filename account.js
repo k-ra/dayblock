@@ -1,10 +1,10 @@
 /* Quiet bookshelf account controls; local-only mode works without Firebase. */
 window.DayblockAccount = {
-  create({ getState, apply, blank, onReport = () => {}, askImport = null, notify = () => {} }) {
+  create({ getState, apply, blank, onReport = () => {}, notify = () => {} }) {
     const D = window.DayblockCloudData;
     const $ = selector => document.querySelector(selector);
     const dialog = $('#accountDialog'), status = $('#accountStatus');
-    let remote = null, sync = null, authUser = null, importChoice = null, calendarToken = () => {};
+    let remote = null, sync = null, authUser = null, calendarToken = () => {};
     const quiet = text => String(text || '').replace(/(^|[.!?…]\s+)([A-Z])(?=[a-z])/g, (m, lead, c) => lead + c.toLowerCase());
     function message(text) { status.textContent = quiet(text); }
     function download(data, suffix = 'backup') {
@@ -29,9 +29,6 @@ window.DayblockAccount = {
     }
     $('#accountLauncher').onclick = $('#accountNotice').onclick = () => dialog.showModal();
     $('#accountClose').onclick = () => dialog.close();
-    dialog.addEventListener('close', () => { if (importChoice) { importChoice(false); importChoice = null; $('#cloudImportChoice').hidden = true; } });
-    $('#cloudImportYes').onclick = () => { importChoice?.(true); importChoice = null; $('#cloudImportChoice').hidden = true; };
-    $('#cloudImportNo').onclick = () => { importChoice?.(false); importChoice = null; $('#cloudImportChoice').hidden = true; };
     $('#exportBackup').onclick = () => download(getState());
     $('#cloudRecovery').onclick = () => { const data = sync?.recovery(); if (data) download(data, 'recovery'); };
     $('#importBackup').onchange = async event => {
@@ -88,12 +85,6 @@ window.DayblockAccount = {
         remote.onCalendarToken(token => calendarToken(token));
         sync = window.DayblockCloudSync.create({ remote, storage: localStorage, getState, apply, blank, status: report,
           canApply: () => !document.activeElement?.isContentEditable && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName) && !document.body.classList.contains('dragging') && !document.querySelector('dialog[open]'),
-          chooseImport: (user, guest, fresh) => askImport ? askImport(user, guest, fresh) : new Promise(resolve => {
-            importChoice?.(false); importChoice = resolve;
-            $('#cloudImportText').textContent = `import this browser’s notebooks into ${user.email || 'your account'}? Existing cloud entries will be kept. Different versions of an entry are kept as separate copies.`;
-            $('#cloudImportChoice').hidden = false;
-            if (!dialog.open) dialog.showModal();
-          }),
         });
         let settled = false;
         remote.onAuth(user => {
@@ -102,20 +93,19 @@ window.DayblockAccount = {
           if (settled && (real?.uid || null) === (authUser?.uid || null)) return;
           settled = true;
           authUser = real;
-          importChoice?.(false); importChoice = null; $('#cloudImportChoice').hidden = true;
           sync.switchUser(real);
         });
       } catch (error) { message('Cloud sign-in could not load. Check your connection and Firebase configuration. Local notebooks still work.'); }
     }
-    window.addEventListener('online', () => sync?.refresh());
+    const reconnect = () => authUser && !sync?.currentUser() ? sync?.switchUser(authUser) : sync?.refresh();
+    window.addEventListener('online', reconnect);
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) sync?.flush(); else sync?.refresh();
+      if (document.hidden) sync?.flush(); else reconnect();
     });
     // Closing/navigation may end async work early, so the durable device cache
     // remains the fallback. Start the write as soon as pagehide is signalled.
     window.addEventListener('pagehide', () => { void sync?.flush(); });
-    window.addEventListener('beforeunload', event => { if (sync?.pending()) { event.preventDefault(); event.returnValue = ''; } });
-    setInterval(() => { if (!document.hidden) sync?.refresh(); }, 60000);
+    setInterval(() => { if (!document.hidden && navigator.onLine) reconnect(); }, 15000);
     start();
     // The AI key follows the signed-in account.
     const secrets = {
