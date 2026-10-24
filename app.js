@@ -121,7 +121,7 @@ function migrate(s) {
   if (!s.desk.items.some(i => i.type === 'card')) s.desk.items.push({ id: uid(), type: 'card', x: null, y: null, rot: -1 });
   s.months ||= {}; s.weeks ||= {};
   s.trackers ||= {}; s.trackers.ideas ||= []; s.trackers.reading ||= []; s.trackers.recipes ||= [];
-  s.shopping ||= []; s.gratitude ||= {}; s.moodBar ||= {}; s.morningPages ||= {};
+  s.shopping ||= []; s.gratitude ||= {}; s.moodBar ||= {}; s.morningPages ||= {}; s.stickers ||= [];
   s.todoTombstones ||= {};
   s.quickNotes ||= []; s.quickDraft ??= '';
   // The shared catchall became the sticky file: its notes move there, unsorted.
@@ -525,7 +525,7 @@ function dayHead(key) {
 const dayScroll = new Map();
 function renderDayPage(key, { mini = false } = {}) {
   const d = dayData(key);
-  const page = el('section', { class: 'page day-page', 'data-key': key });
+  const page = el('section', { class: 'page day-page', 'data-key': key, 'data-place': `day:${key}` });
   const timeline = el('div', { class: 'timeline' });
   const kind = phone.matches ? 'phone' : 'day';
   renderTimeline(timeline, key, kind);
@@ -1428,7 +1428,7 @@ function yearPixels(year, selected) {
 }
 function gratitudeToday(key, actions = []) {
   const date = fromKey(key);
-  return el('section', { class: 'page flush-bottom', 'aria-label': 'Gratitude today' },
+  return el('section', { class: 'page flush-bottom', 'aria-label': 'Gratitude today', 'data-place': `gratitude:${key}` },
     head({ num: String(date.getDate()), numClass: key === todayKey() ? 'today' : '', stack: [DOW[date.getDay()], monthYear(key)], actions }),
     moodPicker(key), ...gratitudeLists(key));
 }
@@ -1536,7 +1536,7 @@ function morningPage(key, i) {
   }, { multiline: true, label: `Morning pages, page ${i + 1}` });
   update();
   const mp = cur();
-  const page = el('section', { class: 'page', 'aria-label': `Morning pages, page ${i + 1}` });
+  const page = el('section', { class: 'page', 'aria-label': `Morning pages, page ${i + 1}`, 'data-place': `morning:${key}:${i}` });
   page.append(head({ num: el('h1', { class: `num${key === todayKey() ? ' today' : ''}`, style: i ? 'visibility:hidden' : '' }, String(date.getDate())),
     stack: i ? [] : [DOW[date.getDay()], monthYear(key)], actions: [el('span', { class: 'mono ink-2' }, `PAGE ${i + 1} OF 2`)] }));
   page.append(text, foot);
@@ -1586,6 +1586,7 @@ function flowBook({ key, before = [], text, commit, page, min = 1 }) {
     if (built[i]) return built[i];
     const b = built[i] = page(i);
     b.leaf.classList.add('flow-leaf', 'off');
+    b.leaf.dataset.place ||= `${key}:${i}`;
     bind(b.slot);
     mirror.before(b.leaf);
     return b;
@@ -1610,6 +1611,7 @@ function flowBook({ key, before = [], text, commit, page, min = 1 }) {
     });
     mirror.textContent = '';
     show();
+    placeStickers();
   }
   function show() {
     const all = leaves();
@@ -1727,8 +1729,6 @@ function renderMorning() {
       mp.pages = text.split('\f');
       mp.startedAt ||= now; mp.lastAt = now;
       save();
-      const bar = document.querySelector('[data-words]');
-      if (bar) bar.textContent = `${stats().total} words`;
     },
     page: i => {
       const slot = el('div', { class: 'ruled morning-text', 'data-placeholder': i ? '' : 'just start writing.', 'aria-label': `Morning pages, page ${i + 1}` });
@@ -1959,10 +1959,109 @@ function renderStack() {
   if (top != null) scroll.scrollTop = top;
 }
 
+/* ================= stickers: peel one off the sheet, press it onto a page ================= */
+// Kyra's critters. Each placed sticker remembers its page and where on it, as a
+// fraction of the page, so it stays put across screen sizes.
+const STICKERS = [['acorn', 'squirrel with an acorn'], ['boba', 'bear with boba'], ['lift', 'koala lifting'], ['stretch', 'koala stretching'],
+  ['hello', 'otter saying hi'], ['strawberry', 'otter with a strawberry'], ['stump', 'beaver by a stump']];
+const stickerSrc = art => `./stickers/${art}.webp`;
+const stickerName = art => STICKERS.find(([a]) => a === art)?.[1] || 'sticker';
+const stickerEl_ = $('#stickerSheet');
+// Pages without a place of their own (week, month, recipes…) are known by where they sit.
+function pagePlace(page, i) {
+  if (page.dataset.place) return page.dataset.place;
+  const where = surface === 'planner' ? `${state.settings.mode}:${cursor}` : surface === 'recipes' ? selection.recipes || '' : surface === 'gratitude' ? (yearView ? 'year' : bookDay) : '';
+  return (page.dataset.place = `${surface}:${where}:${i}`);
+}
+function placeStickers() {
+  book.querySelectorAll('.page').forEach((page, i) => {
+    const place = pagePlace(page, i);
+    page.querySelectorAll(':scope > .sticker').forEach(n => n.remove());
+    for (const s of state.stickers) if (s.place === place) page.append(stuckSticker(s));
+  });
+}
+function stuckSticker(s) {
+  const node = el('div', { class: 'sticker', style: `left:${s.x * 100}%;top:${s.y * 100}%;--r:${s.r}deg`, title: 'drag to move · drag off the book to peel it off' },
+    el('img', { src: stickerSrc(s.art), alt: stickerName(s.art), draggable: 'false' }));
+  node.addEventListener('pointerdown', e => dragSticker(e, { art: s.art, from: s, origin: node }));
+  return node;
+}
+function dragSticker(e, { art, from = null, origin }) {
+  if (e.button > 0) return;
+  e.preventDefault();
+  const r = from ? from.r : Math.round(Math.random() * 18 - 9);
+  const ghost = el('div', { class: 'sticker ghost', style: `--r:${r}deg` }, el('img', { src: stickerSrc(art), alt: '', draggable: 'false' }));
+  const start = { x: e.clientX, y: e.clientY };
+  let moved = false;
+  const follow = ev => { ghost.style.left = `${ev.clientX}px`; ghost.style.top = `${ev.clientY}px`; };
+  // A placed sticker only lifts once it is really dragged; a sheet sticker peels at once.
+  const lift = () => {
+    if (moved) return;
+    moved = true;
+    follow(start);
+    document.body.append(ghost);
+    if (origin && from) origin.style.visibility = 'hidden';
+    stickerEl_.classList.add('dragging');
+    sfx('peel');
+  };
+  if (!from) lift();
+  const move = ev => {
+    if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4) return;
+    lift(); follow(ev);
+  };
+  const up = ev => {
+    removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+    stickerEl_.classList.remove('dragging');
+    if (!moved) return;
+    const page = ev.type === 'pointerup' && document.elementsFromPoint(ev.clientX, ev.clientY)
+      .map(n => n.closest?.('.page[data-place]')).find(p => p && book.contains(p) && !p.classList.contains('off'));
+    if (page) {
+      const box = page.getBoundingClientRect();
+      const half = 44 / Math.max(1, page.clientWidth), halfY = 44 / Math.max(1, page.clientHeight);
+      const x = clamp((ev.clientX - box.left) / page.clientWidth, half, 1 - half);
+      const y = clamp((ev.clientY - box.top + page.scrollTop) / page.clientHeight, halfY, Math.max(halfY, page.scrollHeight / page.clientHeight - halfY));
+      const s = from || { id: uid(), art };
+      Object.assign(s, { place: page.dataset.place, x: +x.toFixed(4), y: +y.toFixed(4), r });
+      if (!from) state.stickers.push(s);
+      save(); ghost.remove(); placeStickers(); sfx('stick');
+      book.querySelectorAll('.page:not(.off) > .sticker').forEach(n => { if (n.style.left === `${s.x * 100}%` && n.style.top === `${s.y * 100}%`) n.classList.add('landing'); });
+      return;
+    }
+    if (from) {
+      // Dropped off the book: the sticker comes off.
+      state.stickers = state.stickers.filter(x => x !== from);
+      save(); origin?.remove(); sfx('rustle');
+      ghost.classList.add('gone'); setTimeout(() => ghost.remove(), 260);
+      return;
+    }
+    // A fresh sticker let go of off the paper goes back on its sheet.
+    const home = origin?.getBoundingClientRect();
+    if (home) { ghost.classList.add('home'); ghost.style.left = `${home.left + home.width / 2}px`; ghost.style.top = `${home.top + home.height / 2}px`; }
+    setTimeout(() => ghost.remove(), 240);
+  };
+  addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+}
+function openStickers() {
+  closePopover(); closeQuickNote();
+  stickerEl_.replaceChildren(
+    el('header', { class: 'sheet-head' }, el('span', { class: 'mono' }, 'sticker sheet'), button('close', closeStickers, { class: 'quiet' })),
+    el('div', { class: 'sheet-grid' }, el('span', { class: 'sheet-pack', 'aria-hidden': 'true' }, 'kyra’s critters'), STICKERS.map(([art, name]) => {
+      const cell = el('button', { type: 'button', class: 'sheet-sticker', 'aria-label': `${name}: drag onto a page` }, el('img', { src: stickerSrc(art), alt: '', draggable: 'false' }));
+      cell.addEventListener('pointerdown', e => dragSticker(e, { art, origin: cell }));
+      return cell;
+    })),
+    el('p', { class: 'sheet-hint' }, 'peel one off and press it onto a page. drag it off the book to take it back off.'));
+  stickerEl_.hidden = false;
+  sfx('rustle');
+}
+function closeStickers() { stickerEl_.hidden = true; }
+const toggleStickers = () => (stickerEl_.hidden ? openStickers() : closeStickers());
+
 /* ---------- quick note: a clear sticky from the bottom bar ---------- */
 const quickEl = $('#quickNote'), quickText = $('#quickText'), quickPut = $('#quickPut');
 function openQuickNote() {
   closePopover();
+  closeStickers();
   quickEl.hidden = false;
   sfx('rustle');
   quickText.value = state.quickDraft || '';
@@ -2384,6 +2483,7 @@ function renderBar() {
   const b = (text, fn, attrs = {}) => button(text, fn, attrs);
   const grow = () => el('span', { class: 'grow' });
   const quick = () => b('quick note', openQuickNote, { class: 'quick-pill' });
+  const stickers = () => surface === 'shelf' ? null : b(phone.matches ? el('img', { src: stickerSrc('hello'), alt: '', draggable: 'false' }) : 'stickers', toggleStickers, { class: 'sticker-pill', 'aria-label': 'Sticker sheet' });
   // Only the books that use hours carry settings; everything else lives on the shelf.
   const settings = () => phone.matches || !['shelf', 'planner', 'daybook'].includes(surface) ? null : b('settings', toggleSettings, { class: 'settings-btn', 'aria-expanded': String(settingsOpen) });
   const shelfBtn = () => b('shelf', () => { surface = 'shelf'; closeAddSheet(); sfx('close'); render(); }, { class: 'first' });
@@ -2395,29 +2495,26 @@ function renderBar() {
   switch (surface) {
     case 'shelf':
       if (phone.matches) items.push(b('settings', toggleSettings, { class: 'settings-btn', 'aria-expanded': String(settingsOpen) }));
-      else items.push(grow(), quick(), settings());
+      else items.push(grow(), stickers(), quick(), settings());
       break;
-    case 'planner': items.push(shelfBtn(), ...dates(), grow(), quick(), settings()); break;
+    case 'planner': items.push(shelfBtn(), ...dates(), grow(), stickers(), quick(), settings()); break;
     case 'ideas': case 'recipes': {
       const back = onePage() && detail ? b(`‹ ${BOOKS[surface].name}`, () => { detail = false; render(); }) : null;
       const item = surface === 'ideas' ? state.trackers.ideas.find(x => x.id === selection.ideas) : state.trackers.recipes.find(x => x.id === selection.recipes);
       const action = !detail ? primary(surface === 'ideas' ? '+ new idea' : '+ add recipe', surface === 'ideas' ? newIdea : addRecipe)
         : surface === 'recipes' && item ? primary('add to todo', () => addIngredientsToTodo(item)) : item ? primary(item.archived ? 'restore' : 'archive', () => { item.archived = !item.archived; detail = false; save(); render(); }) : null;
-      items.push(shelfBtn(), back, grow(), action, quick(), settings()); break;
+      items.push(shelfBtn(), back, grow(), action, stickers(), quick(), settings()); break;
     }
-    case 'reading': items.push(shelfBtn(), grow(), primary('+ add book', addBook), quick(), settings()); break;
+    case 'reading': items.push(shelfBtn(), grow(), primary('+ add book', addBook), stickers(), quick(), settings()); break;
     case 'journal': {
       const item = state.trackers.reading.find(x => x.id === journalId);
       const siblings = state.trackers.reading.filter(x => !!x.archived === !!item?.archived);
       const next = siblings[siblings.indexOf(item) + 1];
-      items.push(shelfBtn(), b('‹ book log', () => { journalId = null; surface = 'reading'; render(); }), grow(), next ? primary('next ›', () => { journalId = next.id; render(); }) : null, quick(), settings()); break;
+      items.push(shelfBtn(), b('‹ book log', () => { journalId = null; surface = 'reading'; render(); }), grow(), next ? primary('next ›', () => { journalId = next.id; render(); }) : null, stickers(), quick(), settings()); break;
     }
-    case 'gratitude': items.push(shelfBtn(), ...dates(), grow(), primary(yearView ? 'day' : 'year', () => { yearView = !yearView; render(); }), quick(), settings()); break;
-    case 'morning': {
-      const mp = state.morningPages[bookDay];
-      items.push(shelfBtn(), ...dates(), grow(), phone.matches ? el('span', { class: 'bar-text', 'data-words': '' }, `${mp ? words(mp.pages.join(' ')) : 0} words`) : null, quick(), settings()); break;
-    }
-    case 'daybook': items.push(shelfBtn(), ...dates(), grow(), quick(), settings()); break;
+    case 'gratitude': items.push(shelfBtn(), ...dates(), grow(), primary(yearView ? 'day' : 'year', () => { yearView = !yearView; render(); }), stickers(), quick(), settings()); break;
+    case 'morning': items.push(shelfBtn(), ...dates(), grow(), stickers(), quick(), settings()); break;
+    case 'daybook': items.push(shelfBtn(), ...dates(), grow(), stickers(), quick(), settings()); break;
   }
   bar.replaceChildren(...items.filter(Boolean));
 }
@@ -2494,6 +2591,8 @@ function render() {
   }
   stationery.hidden = !margin;
   if (margin) renderDesk();
+  placeStickers();
+  if (surface === 'shelf') closeStickers();
 }
 
 /* ================= start ================= */

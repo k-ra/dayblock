@@ -951,3 +951,50 @@ dialog::backdrop { background: rgba(51, 51, 51, .25); }
   .book.flowing > .page { overflow: auto; border-top: 0; }
   .book.flowing > .page.flow-leaf { overflow: hidden; }
 }
+
+/* ---------- stickers ---------- */
+.page { position: relative; }
+.bar .sticker-pill { color: var(--ink); padding: 6px 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px #c9c7c0; margin-left: 6px; }
+.sticker-sheet {
+  position: fixed; z-index: 50; width: 336px; right: max(24px, calc(50% - 600px)); bottom: calc(var(--bar-h) + 12px + env(safe-area-inset-bottom));
+  padding: 14px 16px 12px; background: #fff; border-radius: 4px;
+  background-image: linear-gradient(var(--line-soft, #eeede8) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft, #eeede8) 1px, transparent 1px);
+  background-size: 16px 16px; background-position: -1px -1px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 22px 30px -12px rgba(0, 0, 0, .26);
+  transform: rotate(-1deg); transform-origin: 85% 100%; animation: pullup .45s var(--ease); transition: opacity .2s;
+}
+.sticker-sheet.dragging { opacity: .35; }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
+.sheet-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 76px; gap: 4px; }
+.sheet-pack { display: grid; place-items: center; text-align: center; font: 9px/12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); margin: 8px; border-radius: 50%; background: color-mix(in oklch, var(--pen-butter) 55%, white); box-shadow: 0 0 0 3px #fff, 0 1px 3px rgba(0, 0, 0, .18); transform: rotate(-8deg); }
+.sheet-sticker { min-height: 0; display: grid; place-items: center; padding: 6px; border-radius: 6px; cursor: grab; touch-action: none; transition: transform .18s var(--ease); }
+.sheet-sticker:hover { transform: translateY(-2px) rotate(-3deg); }
+.sheet-sticker img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; user-select: none; -webkit-user-drag: none; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .14)); }
+.sheet-hint { margin: 6px 0 0; font-size: 11px; line-height: 16px; color: var(--ink-3); }
+
+.sticker { position: absolute; z-index: 4; width: 88px; transform: translate(-50%, -50%) rotate(var(--r, 0deg)); cursor: grab; touch-action: none; user-select: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .16)) drop-shadow(0 2px 3px rgba(0, 0, 0, .07)); }
+.sticker img { display: block; width: 100%; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+/* lifted: the corner curls up first, then it rises off the backing */
+.sticker.ghost { position: fixed; z-index: 300; pointer-events: none; cursor: grabbing; transform: translate(-50%, -50%) rotate(var(--r)) scale(1.12);
+  filter: drop-shadow(0 16px 14px rgba(0, 0, 0, .2)) drop-shadow(0 3px 4px rgba(0, 0, 0, .1)); animation: peel .34s cubic-bezier(.2, .9, .3, 1.2); }
+.sticker.ghost.home { transition: left .22s var(--ease), top .22s var(--ease), transform .22s, opacity .22s; transform: translate(-50%, -50%) rotate(0) scale(.8); opacity: 0; }
+.sticker.ghost.gone { transition: transform .25s, opacity .25s; transform: translate(-50%, -30%) rotate(calc(var(--r) + 20deg)) scale(.7); opacity: 0; }
+.sticker.landing { animation: press .36s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes peel {
+  0% { transform: translate(-50%, -50%) rotate(var(--r)) scale(1); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .16)); }
+  35% { transform: translate(-50%, -50%) rotate(var(--r)) perspective(260px) rotateX(24deg) rotateY(-26deg) scale(1.04); }
+  100% { transform: translate(-50%, -50%) rotate(var(--r)) scale(1.12); }
+}
+@keyframes press {
+  0% { transform: translate(-50%, -50%) rotate(var(--r)) scale(1.12); filter: drop-shadow(0 16px 14px rgba(0, 0, 0, .2)); }
+  55% { transform: translate(-50%, -50%) rotate(var(--r)) scale(.94); }
+  100% { transform: translate(-50%, -50%) rotate(var(--r)) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .sticker.ghost, .sticker.landing { animation: none; } }
+@media (max-width: 700px) {
+  .sticker-sheet { right: 12px; left: 12px; width: auto; }
+  .sticker { width: 72px; }
+  .bar .sticker-pill { min-height: 36px; padding: 0 8px; margin-left: 0; }
+  .bar .sticker-pill img { width: 22px; height: 22px; object-fit: contain; }
+}
