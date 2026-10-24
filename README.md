@@ -31,9 +31,9 @@ notebooks, quick notes). What changed or moved is listed in
 - **Real pages.** Morning pages, idea notes and book journal notes are fixed
   pages, not scrolling boxes. When a page fills, the writing carries on at the
   top of the next one; **+ page** starts a fresh page, and backspace at the top
-  of a page reaches back onto the one before. Turning back through morning
-  pages skips empty mornings older than a week, so the written ones read one
-  after another.
+  of a page reaches back onto the one before. Morning pages are one continuous
+  book: each written morning follows the last under a small date line, with
+  no half-empty pages between them, and today's waits at the end.
 - **Stickers.** The **stickers** button opens a sheet of critters. Peel one off,
   press it onto any page, drag it to move it, or drag it off the book to take it
   back off. Stickers stay on their page (a day, a morning page, an idea…).

@@ -474,12 +474,8 @@ $('#toggleMargin').onclick = () => { prefs().margin = !prefs().margin; save(); r
 function navigate(direction) {
   if (surface === 'daybook') { flipDayBook(direction); return; }
   if (surface === 'morning') {
-    if (flowing?.turn(direction)) return;
-    const next = nextMorning(bookDay, direction);
-    if (!next) { toast('no earlier morning pages'); return; }
-    // Turning back lands on the last page of that morning.
-    leafAt.set(`morning:${next}`, direction < 0 ? Infinity : 0);
-    bookDay = next; render(); sfx('page'); return;
+    if (!flowing?.turn(direction)) toast(direction < 0 ? 'the first morning' : 'that’s today');
+    return;
   }
   sfx('page');
   if (surface !== 'planner') { bookDay = addDays(bookDay, direction); render(); return; }
@@ -491,6 +487,7 @@ function navigate(direction) {
 }
 function goToday() {
   if (surface === 'planner') { cursor = todayKey(); refreshCalendar(); } else bookDay = todayKey();
+  if (surface === 'morning') leafAt.delete('morning-book');
   render();
 }
 document.addEventListener('keydown', e => {
@@ -1266,13 +1263,13 @@ function renderIdeas() {
     choice(IDEA_STATUS.map(s => [s, s]), item.status || 'captured', v => { item.status = v; persist(); render(); }, { 'aria-label': 'Idea status' }));
     if (onePage() && !detail) { mountPages(index, entry, 'ideas'); return; }
     // The notes are real pages: a long idea runs on past this one.
-    const slot = el('div', { class: 'ruled writing', 'data-placeholder': 'write it out…', 'aria-label': 'Idea notes' });
-    entry.append(el('div', { class: 'section fill' }, label('notes'), slot), el('footer', { class: 'page-foot mono turns' }));
+    const body = el('div', { class: 'flow-body', 'aria-label': 'Idea notes' });
+    entry.append(el('div', { class: 'section fill' }, label('notes'), body), el('footer', { class: 'page-foot mono turns' }));
     book.dataset.cover = 'ideas';
     book.className = onePage() ? 'book single' : 'book spread';
-    flowing = flowBook({ key: `idea:${item.id}`, before: onePage() ? [] : [index], text: item.notes || '',
-      commit: v => { item.notes = v; persist(); },
-      page: i => i ? flowLeaf((item.title || 'an idea').toUpperCase()) : { leaf: entry, slot } });
+    flowing = flowBook({ key: `idea:${item.id}`, before: onePage() ? [] : [index], items: [{ text: item.notes || '' }],
+      commit: (_, v) => { item.notes = v; persist(); }, placeholder: () => 'write it out…',
+      page: i => i ? flowLeaf((item.title || 'an idea').toUpperCase()) : { leaf: entry, body } });
     return;
   }
   entry.append(head({ num: '', ghost: true }));
@@ -1351,14 +1348,14 @@ function renderJournal() {
     button(item.archived ? 'restore' : 'archive', () => { item.archived = !item.archived; showArchived = !item.archived; journalId = null; surface = 'reading'; save(); render(); }, { class: 'quiet' })] }),
   section('finalThoughts', 'final thoughts', 144, false));
   // The notes are real pages: a long journal runs on past this spread.
-  const slot = el('div', { class: 'ruled writing', 'aria-label': 'Notes' });
-  right.append(el('div', { class: 'section rule fill' }, label('notes'), slot), el('footer', { class: 'page-foot mono turns' }));
+  const body = el('div', { class: 'flow-body', 'aria-label': 'Notes' });
+  right.append(el('div', { class: 'section rule fill' }, label('notes'), body), el('footer', { class: 'page-foot mono turns' }));
   if (onePage()) left.append(el('footer', { class: 'page-foot mono turns' }));
   book.dataset.cover = 'reading';
   book.className = onePage() ? 'book single' : 'book spread';
-  flowing = flowBook({ key: `book:${item.id}`, before: [left], text: item.notes || '',
-    commit: v => { item.notes = v; save(); },
-    page: i => i ? flowLeaf((item.title || 'a book').toUpperCase()) : { leaf: right, slot } });
+  flowing = flowBook({ key: `book:${item.id}`, before: [left], items: [{ text: item.notes || '' }],
+    commit: (_, v) => { item.notes = v; save(); },
+    page: i => i ? flowLeaf((item.title || 'a book').toUpperCase()) : { leaf: right, body } });
 }
 
 /* ---------- gratitude: the year in pixels and today ---------- */
@@ -1567,49 +1564,65 @@ function placeCaret(node, n) {
   const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
 }
 // A plain leaf that continues the writing: a small running head, the lines, a foot.
-function flowLeaf(running, cls = 'ruled writing') {
-  const slot = el('div', { class: `${cls} flow`, 'aria-label': `${running}, continued` });
-  const foot = el('footer', { class: 'page-foot mono turns' });
-  return { leaf: el('section', { class: 'page flow-leaf' }, el('header', { class: 'head running mono' }, running), slot, foot), slot, foot };
+function flowLeaf(running) {
+  const body = el('div', { class: 'flow-body' });
+  return { leaf: el('section', { class: 'page flow-leaf' }, el('header', { class: 'head running mono' }, running), body, el('footer', { class: 'page-foot mono turns' })), body };
 }
+// items: the entries that run through the book, [{ text, head }], in order.
 // before: leaves that stay put ahead of the writing (an index, a facts page).
-// page(i) → { leaf, slot, foot?, decorate?(i, n) } builds writing page i.
+// page(i) → { leaf, body, decorate?(i, n, pieces) } builds writing page i; the
+// writing goes in body. heading(item) is the line an entry starts under.
 // Leaves with a footer.turns get ‹ back, more › and + page in it.
-function flowBook({ key, before = [], text, commit, page, min = 1 }) {
+function flowBook({ key, before = [], items, commit, page, min = 1, start = 0, slotClass = 'ruled writing',
+  heading = () => null, placeholder = () => '', addPages = true }) {
   const per = onePage() ? 1 : 2;
   const built = [];
-  let pages = [], at = leafAt.get(key) ?? 0, composing = false;
+  let pages = [], at = leafAt.get(key) ?? start, composing = false;
   const mirror = el('div', { 'aria-hidden': 'true' });
   book.classList.add('flowing');
   book.append(...before, mirror);
-  const slotOf = i => {
+  const pageOf = i => {
     if (built[i]) return built[i];
-    const b = built[i] = page(i);
+    const b = built[i] = { ...page(i), slots: [], sig: null };
     b.leaf.classList.add('flow-leaf', 'off');
     b.leaf.dataset.place ||= `${key}:${i}`;
-    bind(b.slot);
     mirror.before(b.leaf);
     return b;
   };
-  const indexOf = slot => built.findIndex(b => b.slot === slot);
-  const fits = (i, s) => {
-    const { slot } = slotOf(i);
-    // Phones enlarge editable text, so the mirror copies the slot's own type.
-    const type = getComputedStyle(slot);
-    mirror.className = `${slot.className} flow-mirror`;
-    mirror.style.cssText = `width:${slot.clientWidth}px;font:${type.font};letter-spacing:${type.letterSpacing}`;
-    mirror.textContent = domText(s);
-    return mirror.scrollHeight <= slot.clientHeight + 1;
+  const where = slot => {
+    for (let i = 0; i < pages.length; i++) { const q = built[i]?.slots.indexOf(slot); if (q >= 0) return { i, q }; }
+    return null;
   };
-  const leaves = () => [...before, ...built.slice(0, pages.length).map(b => b.leaf)];
-  function layout(from = 0) {
-    pages = Flow.paginate(text, fits, { min, keep: pages.slice(0, Math.max(0, from)) });
-    built.splice(pages.length).forEach(b => b.leaf.remove());
-    pages.forEach((p, i) => {
-      const { slot } = slotOf(i);
+  // The mirror is laid out like the page's body; its pieces count as editable
+  // so phones size their type the same.
+  const fits = (i, pieces) => {
+    const { body } = pageOf(i);
+    mirror.className = `${body.className} flow-mirror`;
+    mirror.style.width = `${body.clientWidth}px`;
+    mirror.replaceChildren(...pieces.flatMap(p => [p.head ? heading(p.item) : null, el('div', { class: `${slotClass} piece`, contenteditable: 'false' }, domText(p.text))]).filter(Boolean));
+    return mirror.scrollHeight <= body.clientHeight + 1;
+  };
+  const firstOf = (i, q) => { const p = pages[i][q]; return p.seg === 0 && !pages.slice(0, i).some(pg => pg.some(x => x.item === p.item)) && pages[i].findIndex(x => x.item === p.item) === q; };
+  function fill(i) {
+    const b = pageOf(i), list = pages[i];
+    const sig = list.map(p => `${p.item}:${p.head}`).join('|');
+    if (b.sig !== sig) {
+      b.sig = sig;
+      b.slots = list.map(() => bind(el('div', { class: `${slotClass} piece` })));
+      b.body.replaceChildren(...list.flatMap((p, q) => [p.head ? heading(p.item) : null, b.slots[q]]).filter(Boolean));
+    }
+    list.forEach((p, q) => {
+      const slot = b.slots[q];
+      slot.dataset.placeholder = !p.text && firstOf(i, q) ? placeholder(p.item) : '';
       if (slot.textContent !== domText(p.text)) slot.textContent = domText(p.text);
     });
-    mirror.textContent = '';
+  }
+  const leaves = () => [...before, ...built.slice(0, pages.length).map(b => b.leaf)];
+  function layout(from = 0) {
+    pages = Flow.paginate(items, fits, { min, keep: pages.slice(0, Math.max(0, from)) });
+    built.splice(pages.length).forEach(b => b.leaf.remove());
+    pages.forEach((_, i) => fill(i));
+    mirror.replaceChildren();
     show();
     placeStickers();
   }
@@ -1619,7 +1632,7 @@ function flowBook({ key, before = [], text, commit, page, min = 1 }) {
     leafAt.set(key, at);
     all.forEach((leaf, i) => leaf.classList.toggle('off', i < at || i >= at + per));
     const n = pages.length;
-    built.slice(0, n).forEach((b, i) => b.decorate?.(i, n));
+    built.slice(0, n).forEach((b, i) => b.decorate?.(i, n, pages[i]));
     // Feet marked .turns carry the page turns: back on the first leaf showing,
     // more on the last, and + page at the very end.
     all.forEach((leaf, li) => {
@@ -1630,7 +1643,7 @@ function flowBook({ key, before = [], text, commit, page, min = 1 }) {
         el('span', {}, first && at > 0 ? button('‹ back', () => turn(-1), { class: 'quiet' }) : null),
         el('span', {}, i >= 0 && n > 1 ? `PAGE ${i + 1} OF ${n}` : ''),
         el('span', { class: 'turn-next' }, last && li < all.length - 1 ? button('more ›', () => turn(1), { class: 'quiet' }) : null,
-          li === all.length - 1 ? button('+ page', addPage, { class: 'quiet' }) : null));
+          addPages && li === all.length - 1 ? button('+ page', addPage, { class: 'quiet' }) : null));
     });
   }
   function turn(direction) {
@@ -1639,113 +1652,107 @@ function flowBook({ key, before = [], text, commit, page, min = 1 }) {
     at = next; show(); sfx('page');
     return true;
   }
-  function place(offset) {
-    const { i, local } = Flow.locate(pages, offset);
-    const li = before.length + i;
+  function toEnd() { at = Infinity; show(); }
+  function place(item, offset) {
+    const { p, q, local } = Flow.locate(pages, item, offset);
+    const li = before.length + p;
     if (li < at || li >= at + per) { at = li; show(); sfx('page'); }
-    placeCaret(slotOf(i).slot, local);
+    placeCaret(pageOf(p).slots[q], local);
   }
-  function change(next, caret) {
-    text = next; commit(text);
-    layout(); place(caret);
+  function change(item, next, caret) {
+    items[item].text = next; commit(item, next);
+    layout(); place(item, caret);
   }
   function addPage() {
-    change(text + '\f', text.length + 1);
+    const last = items.length - 1;
+    change(last, items[last].text + '\f', items[last].text.length + 1);
   }
   function bind(slot) {
-    slot.classList.add('flow');
     slot.contentEditable = 'plaintext-only';
     if (slot.contentEditable !== 'plaintext-only') slot.contentEditable = 'true';
     slot.setAttribute('role', 'textbox'); slot.setAttribute('aria-multiline', 'true');
     const reflow = () => {
-      const i = indexOf(slot);
-      pages[i] = { ...pages[i], text: slotText(slot) };
-      const caret = Flow.offsetOf(pages, i, Math.min(caretIn(slot) ?? 0, pages[i].text.length));
-      text = Flow.join(pages); commit(text);
+      const pos = where(slot);
+      if (!pos) return;
+      const { i, q } = pos, piece = pages[i][q] = { ...pages[i][q], text: slotText(slot) };
+      const caret = Flow.offsetOf(pages, i, q, Math.min(caretIn(slot) ?? 0, piece.text.length));
+      items[piece.item].text = Flow.join(pages, piece.item); commit(piece.item, items[piece.item].text);
       layout(i - 1);
-      const now = Flow.locate(pages, caret);
-      if (now.i !== i || caretIn(slot) !== now.local) place(caret);
+      const now = Flow.locate(pages, piece.item, caret);
+      if (pageOf(now.p).slots[now.q] !== slot || caretIn(slot) !== now.local) place(piece.item, caret);
     };
     slot.addEventListener('input', e => { if (!composing && !e.isComposing) reflow(); });
     slot.addEventListener('compositionstart', () => { composing = true; });
     slot.addEventListener('compositionend', () => { composing = false; reflow(); });
     slot.addEventListener('keydown', e => {
       if (e.key === 'Escape') { e.preventDefault(); slot.blur(); return; }
-      const i = indexOf(slot);
-      const sel = getSelection();
       // Backspace at the top of a page reaches back onto the one before it.
-      if (e.key === 'Backspace' && i > 0 && sel.isCollapsed && caretIn(slot) === 0) {
-        e.preventDefault();
-        const g = Flow.offsetOf(pages, i, 0);
-        change(text.slice(0, g - 1) + text.slice(g), g - 1);
-      }
+      const pos = where(slot);
+      if (e.key !== 'Backspace' || !pos || !getSelection().isCollapsed || caretIn(slot) !== 0) return;
+      const { item } = pages[pos.i][pos.q], g = Flow.offsetOf(pages, pos.i, pos.q, 0);
+      e.preventDefault();
+      if (g > 0) change(item, items[item].text.slice(0, g - 1) + items[item].text.slice(g), g - 1);
     });
     // An empty page after unfinished writing sends the pen back to where it stopped.
     slot.addEventListener('focus', () => {
-      const i = indexOf(slot);
-      if (i > 0 && !pages[i]?.text && pages[i - 1].seg === pages[i].seg) {
-        let end = i - 1;
-        while (end > 0 && !pages[end].text && pages[end - 1].seg === pages[i].seg) end--;
-        queueMicrotask(() => place(Flow.offsetOf(pages, end, pages[end].text.length)));
-      }
+      const pos = where(slot);
+      if (!pos || pages[pos.i][pos.q].text) return;
+      const { item } = pages[pos.i][pos.q], end = Flow.locate(pages, item, items[item].text.length);
+      if (end.p !== pos.i || end.q !== pos.q) queueMicrotask(() => place(item, items[item].text.length));
     });
+    return slot;
   }
   // Lay out once the book has its size, before anything is drawn.
-  slotOf(0);
+  pageOf(0);
   queueMicrotask(() => { if (mirror.isConnected) layout(); });
-  return { turn, addPage };
+  return { turn, toEnd };
 }
 
-/* ---------- morning pages: as many pages as the writing takes ---------- */
-// Old empty mornings are skipped when turning back; the last week always shows.
+/* ---------- morning pages: one book of mornings, one after another ---------- */
+// Every written morning, and today's, runs on from the one before under a small
+// date line, so there are no half-empty pages between them.
 const morningWritten = k => words((state.morningPages[k]?.pages || []).join(' ')) > 0;
-function nextMorning(key, direction) {
-  const recent = addDays(todayKey(), -7);
-  if (direction > 0) {
-    let k = addDays(key, 1);
-    while (k < recent && !morningWritten(k)) k = addDays(k, 1);
-    return k;
-  }
-  const prev = addDays(key, -1);
-  if (prev >= recent) return prev;
-  return Object.keys(state.morningPages).filter(k => k < key && morningWritten(k)).sort().pop() || null;
+const dayMark = k => { const d = fromKey(k); return `${DOW[d.getDay()]} · ${mon3(d)} ${d.getDate()}${d.getFullYear() !== new Date().getFullYear() ? `, ${d.getFullYear()}` : ''}`.toUpperCase(); };
+function morningStats(k) {
+  const mp = state.morningPages[k] || {};
+  const total = words((mp.pages || []).join(' '));
+  const minutes = mp.startedAt && mp.lastAt ? Math.max(1, Math.round((new Date(mp.lastAt) - new Date(mp.startedAt)) / 60000)) : 0;
+  return [mp.startedAt ? fmtClock(new Date(mp.startedAt)) : '', total ? `${total} WORDS${minutes ? ` · ${minutes} MIN` : ''}` : ''].filter(Boolean).join(' · ');
 }
 function renderMorning() {
-  const key = bookDay, date = fromKey(key);
+  const today = todayKey();
   book.dataset.cover = 'morning';
   book.className = onePage() ? 'book single' : 'book spread';
-  const segs = [...(state.morningPages[key]?.pages || [''])];
-  while (segs.length > 1 && !segs[segs.length - 1]) segs.pop();
-  const stats = () => {
-    const mp = state.morningPages[key] || {};
-    const total = words((mp.pages || []).join(' '));
-    const minutes = mp.startedAt && mp.lastAt ? Math.max(1, Math.round((new Date(mp.lastAt) - new Date(mp.startedAt)) / 60000)) : 0;
-    return { mp, total, minutes };
-  };
+  const days = Object.keys(state.morningPages).filter(k => k !== today && morningWritten(k)).sort();
+  if (today >= (days[days.length - 1] || '')) days.push(today);
+  const items = days.map(k => ({ key: k, head: true, text: (state.morningPages[k]?.pages || []).filter(Boolean).join('\n\n') }));
   flowing = flowBook({
-    key: `morning:${key}`, text: segs.join('\f'), min: onePage() ? 1 : 2,
-    commit: text => {
-      const mp = morningDay(key), now = new Date().toISOString();
-      mp.pages = text.split('\f');
-      mp.startedAt ||= now; mp.lastAt = now;
+    key: 'morning-book', items, min: onePage() ? 1 : 2, start: Infinity, slotClass: 'ruled morning-text', addPages: false,
+    heading: i => el('div', { class: `day-mark mono${days[i] === today ? ' today' : ''}`, 'data-day': days[i] },
+      el('span', {}, dayMark(days[i])), el('span', { class: 'count' }, morningStats(days[i]))),
+    placeholder: i => days[i] === today ? 'just start writing.' : '',
+    commit: (i, text) => {
+      const k = days[i], mp = morningDay(k), now = new Date().toISOString();
+      mp.pages = [text];
+      if (k === today) { mp.startedAt ||= now; mp.lastAt = now; }
       save();
+      book.querySelectorAll(`.day-mark[data-day="${k}"] .count`).forEach(n => { n.textContent = morningStats(k); });
     },
     page: i => {
-      const slot = el('div', { class: 'ruled morning-text', 'data-placeholder': i ? '' : 'just start writing.', 'aria-label': `Morning pages, page ${i + 1}` });
-      const of = el('span', { class: 'mono ink-2' });
-      const more = button('+ page', () => flowing.addPage(), { class: 'quiet' });
-      const foot = el('footer', { class: 'page-foot mono' });
-      const h = head({ num: el('h1', { class: `num${key === todayKey() ? ' today' : ''}`, style: i ? 'visibility:hidden' : '' }, String(date.getDate())),
-        stack: [DOW[date.getDay()], monthYear(key)], actions: [more, of] });
-      if (i) h.querySelector('.stack').style.visibility = 'hidden';
+      const num = el('h1', { class: 'num' }), dow = el('span'), month = el('span');
+      const body = el('div', { class: 'flow-body' });
+      const leaf = el('section', { class: 'page', 'aria-label': 'Morning pages' },
+        head({ num, stack: [dow, month] }), body, el('footer', { class: 'page-foot mono turns' }));
       return {
-        leaf: el('section', { class: 'page', 'aria-label': `Morning pages, page ${i + 1}` }, h, slot, foot), slot, foot,
-        decorate(i, n) {
-          const { mp, total, minutes } = stats();
-          of.textContent = `PAGE ${i + 1} OF ${n}`;
-          more.style.display = i === n - 1 ? '' : 'none';
-          foot.replaceChildren(el('span', {}, i === 0 && mp.startedAt ? fmtClock(new Date(mp.startedAt)) : ''),
-            el('span', {}, i === n - 1 && total ? `${total} WORDS${minutes ? ` · ${minutes} MIN` : ''}` : ''));
+        leaf, body,
+        // Each page is headed by the morning it opens on.
+        decorate(i, n, list) {
+          const k = days[list[0].item], d = fromKey(k);
+          num.textContent = String(d.getDate()); num.classList.toggle('today', k === today);
+          dow.textContent = DOW[d.getDay()]; month.textContent = monthYear(k);
+          // The bar names the morning the open spread starts on.
+          const range = document.querySelector('.bar .range'), prev = leaf.previousElementSibling;
+          if (range && !leaf.classList.contains('off') && (!prev || prev.classList.contains('off'))) range.textContent = `${upperDate(k)}, ${d.getFullYear()}`;
         },
       };
     },

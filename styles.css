@@ -940,7 +940,14 @@ dialog::backdrop { background: rgba(51, 51, 51, .25); }
 .book.flowing > .page { height: 100%; }
 .book.flowing > .page.off { position: absolute; inset: 0; grid-column: -2 / -1; grid-row: 1; visibility: hidden; pointer-events: none; }
 .page.flow-leaf { overflow: hidden; }
-.ruled.flow { flex: 1 1 0; min-height: 0 !important; overflow: hidden; }
+.flow-body { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; line-height: var(--wline); background-image: var(--ruling); background-size: var(--ruling-size); }
+.flow-body > .piece { flex: none; min-height: var(--wline) !important; background: none; overflow: visible; }
+.flow-body > .piece:last-child { flex: 1 0 auto; }
+/* each morning starts a line below the last, under its date */
+.day-mark { display: flex; justify-content: space-between; gap: 12px; flex: none; height: var(--wline); font-size: 10px; line-height: var(--wline); letter-spacing: .14em; color: var(--ink-2); white-space: nowrap; overflow: hidden; }
+.day-mark:not(:first-child) { margin-top: var(--wline); }
+.day-mark.today > :first-child { color: var(--ink); }
+.day-mark .count { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; }
 .flow-mirror { position: absolute; left: 0; top: 0; height: auto !important; min-height: 0 !important; flex: none !important; overflow: visible !important; visibility: hidden; pointer-events: none; }
 .head.running { min-height: 0; padding-bottom: 6px; font-size: 10px; line-height: 14px; letter-spacing: .14em; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .page-foot.turns { align-items: center; min-height: 20px; gap: 8px; }
