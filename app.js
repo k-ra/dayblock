@@ -74,6 +74,8 @@ const isoWeek = k => {
 const isWeek = () => state.settings.mode === 'week';
 const isMonth = () => state.settings.mode === 'month';
 const words = text => (text.trim().match(/\S+/g) || []).length;
+// Small paper sounds for turning, ticking, peeling and sticking. Off in settings.
+const sfx = name => { if (state?.settings?.sounds !== false) window.DayblockSounds?.play(name); };
 const penOf = color => ({ yellow: 'butter', peach: 'clay', pink: 'rose', lilac: 'peri', blue: 'peri', sky: 'slate', mint: 'seafoam', green: 'moss', grey: 'bone' }[color] || color);
 
 function el(tag, attrs = {}, ...children) {
@@ -471,6 +473,15 @@ $('#toggleMargin').onclick = () => { prefs().margin = !prefs().margin; save(); r
 
 function navigate(direction) {
   if (surface === 'daybook') { flipDayBook(direction); return; }
+  if (surface === 'morning') {
+    if (flowing?.turn(direction)) return;
+    const next = nextMorning(bookDay, direction);
+    if (!next) { toast('no earlier morning pages'); return; }
+    // Turning back lands on the last page of that morning.
+    leafAt.set(`morning:${next}`, direction < 0 ? Infinity : 0);
+    bookDay = next; render(); sfx('page'); return;
+  }
+  sfx('page');
   if (surface !== 'planner') { bookDay = addDays(bookDay, direction); render(); return; }
   if (isMonth()) {
     const d = fromKey(cursor);
@@ -484,6 +495,11 @@ function goToday() {
 }
 document.addEventListener('keydown', e => {
   if (e.target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || document.querySelector('dialog[open]')) return;
+  if (['ideas', 'journal'].includes(surface) && flowing) {
+    if (e.key === 'ArrowLeft') flowing.turn(-1);
+    if (e.key === 'ArrowRight') flowing.turn(1);
+    return;
+  }
   if (!['planner', 'gratitude', 'morning', 'daybook'].includes(surface)) return;
   if (e.key === 'ArrowLeft') navigate(-1);
   if (e.key === 'ArrowRight') navigate(1);
@@ -604,7 +620,7 @@ function renderTimeline(container, key, kind = 'day') {
     taskButton?.addEventListener('pointerdown', e => e.stopPropagation());
     const preview = tasks.length ? el('div', { class: 'block-task-preview' }, tasks.slice(0, 2).map(task => {
       const item = button([el('span', { class: 'box' }, task.done ? '✓' : ''), el('span', { class: 'text' }, task.text)], () => {
-        task.done = !task.done; save(); render();
+        task.done = !task.done; sfx(task.done ? 'tick' : 'untick'); save(); render();
       }, { class: `block-task-preview-row${task.done ? ' done' : ''}`, 'aria-label': `${task.done ? 'Mark not done' : 'Mark done'}: ${task.text}` });
       item.addEventListener('pointerdown', e => e.stopPropagation());
       item.addEventListener('click', e => e.stopPropagation());
@@ -612,7 +628,7 @@ function renderTimeline(container, key, kind = 'day') {
     })) : null;
     node.append(...[t, preview, taskButton].filter(Boolean),
       swatchButton(b.color, c => { b.color = c; state.settings.color = c; save(); render(); }),
-      delButton(() => { d.blocks = d.blocks.filter(x => x !== b); save(); render(); }, 'delete block'),
+      delButton(() => { d.blocks = d.blocks.filter(x => x !== b); sfx('erase'); save(); render(); }, 'delete block'),
       el('div', { class: 'block-resize' }));
     place(node);
     layer.append(node);
@@ -755,6 +771,7 @@ function onGridPointerDown(e, key) {
 function addBlock(key, start, end, kind = 'day', title = '') {
   const b = { id: uid(), start, end, title, color: state.settings.color };
   dayData(key).blocks.push(b);
+  sfx('pop');
   if (!title) fresh.add(b.id);
   save(); render();
   if (title) return;
@@ -799,7 +816,7 @@ function openBlockEditor(key, block) {
     drawTasks(); taskDraft.focus();
   };
   const drawTasks = () => taskRows.replaceChildren(...tasks.map((task, i) => {
-    const check = button(task.done ? '✓' : '', () => { task.done = !task.done; drawTasks(); },
+    const check = button(task.done ? '✓' : '', () => { task.done = !task.done; sfx(task.done ? 'tick' : 'untick'); drawTasks(); },
       { class: 'block-check', role: 'checkbox', 'aria-checked': String(!!task.done), 'aria-label': `Done: ${task.text}` });
     const text = el('input', { 'aria-label': `Checklist item ${i + 1}`, value: task.text, maxlength: 300 });
     text.oninput = () => { task.text = text.value; };
@@ -815,7 +832,7 @@ function openBlockEditor(key, block) {
     el('div', { class: 'block-checklist-add' }, taskDraft, button('+ add', addTask, { 'aria-label': 'Add checklist item' })));
   const error = el('p', { role: 'alert' });
   const cancel = button('cancel', () => dialog.close());
-  const remove = button('remove', () => { dayData(key).blocks = dayData(key).blocks.filter(b => b !== block); fresh.delete(block.id); save(); dialog.close(); render(); }, { class: 'remove' });
+  const remove = button('remove', () => { dayData(key).blocks = dayData(key).blocks.filter(b => b !== block); fresh.delete(block.id); sfx('erase'); save(); dialog.close(); render(); }, { class: 'remove' });
   form.append(el('h3', {}, `${dayLabel(key)} · ${monthYear(key)}`), title,
     el('div', { class: 'block-editor-times' }, start, el('span', { class: 'ink-3' }, '–'), end), swatches, checklist, error,
     el('div', { class: 'block-editor-actions' }, remove, cancel, el('button', { type: 'submit' }, 'save')));
@@ -876,7 +893,7 @@ function todoList(list, container, { onChange, focusKey, limit = 0, more } = {})
     const i = list.indexOf(t);
     const li = el('li', { class: `todo${t.done ? ' done' : ''}`, 'data-id': t.id });
     if (t.from) li.append(el('span', { class: 'carried', title: `carried from ${shortDate(t.from)}` }, '→'));
-    li.append(button(t.done ? '✓' : '', () => { t.done = !t.done; onChange(); void account?.syncNow(); render(); }, { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', 'aria-pressed': String(!!t.done) }));
+    li.append(button(t.done ? '✓' : '', () => { t.done = !t.done; sfx(t.done ? 'tick' : 'untick'); onChange(); void account?.syncNow(); render(); }, { class: 'check', 'aria-label': t.done ? 'Mark not done' : 'Mark done', 'aria-pressed': String(!!t.done) }));
     const txt = editable('span', `todo-text hl-${t.color || 'none'}${t.color && t.color !== 'none' ? ' hl' : ''}`, t.text, '…', v => { t.text = v; onChange(); }, {
       label: 'Todo',
       onEnter() { const n = { id: uid(), text: '', done: false, color: 'none' }; list.splice(i + 1, 0, n); onChange(); render(); focusItem(n.id); },
@@ -932,7 +949,7 @@ function openHabitEditor(key) {
       const row = el('div', { class: 'hrow' }, editable('span', 'hname', h.name, 'habit', v => { h.name = v; save(); }, { label: 'Habit name' }));
       for (const k of week) {
         const on = !!state.habitLog[k]?.[h.id];
-        row.append(button('', () => { const l = (state.habitLog[k] ||= {}); if (on) delete l[h.id]; else l[h.id] = true; save(); draw(); },
+        row.append(button('', () => { const l = (state.habitLog[k] ||= {}); if (on) delete l[h.id]; else l[h.id] = true; sfx(on ? 'untick' : 'tick'); save(); draw(); },
           { class: `hcell hl-${HABIT_PENS[i % HABIT_PENS.length]}${on ? ' on' : ''}`, 'aria-pressed': String(on), 'aria-label': `${h.name || 'habit'} on ${shortDate(k)}` }));
       }
       row.append(delButton(() => {
@@ -1041,7 +1058,7 @@ function renderMonth() {
     if (d.title) cell.append(el('span', { class: 'month-item focus' }, d.title));
     for (const event of calendarEvents(key)) cell.append(calendarButton(event, 'month-item hl-peri'));
     for (const b of [...d.blocks].sort((a, b) => a.start - b.start)) cell.append(button(b.title || 'untitled', () => setMode('day', key), { class: `month-item hl-${b.color}`, title: `${fmtRange(b.start, b.end)} · ${b.title}` }));
-    for (const t of d.todos) cell.append(button(`${t.done ? '✓' : '□'} ${t.text || '…'}`, () => { t.done = !t.done; save(); render(); }, { class: `month-item todo-item${t.done ? ' done' : ''}`, 'aria-pressed': String(!!t.done), title: 'toggle done' }));
+    for (const t of d.todos) cell.append(button(`${t.done ? '✓' : '□'} ${t.text || '…'}`, () => { t.done = !t.done; sfx(t.done ? 'tick' : 'untick'); save(); render(); }, { class: `month-item todo-item${t.done ? ' done' : ''}`, 'aria-pressed': String(!!t.done), title: 'toggle done' }));
     if (d.notes) cell.append(button(d.notes.split('\n')[0], () => setMode('day', key), { class: 'month-item todo-item', title: 'open day notes' }));
     grid.append(cell);
   }
@@ -1097,7 +1114,7 @@ function openAddSheet(key) {
     const text = title.value.trim();
     if (!text) { title.focus(); return; }
     const d = dayData(key);
-    if (kind === 'time block') { d.blocks.push({ id: uid(), start, end, title: text, color }); state.settings.color = color; }
+    if (kind === 'time block') { d.blocks.push({ id: uid(), start, end, title: text, color }); state.settings.color = color; sfx('pop'); }
     else if (kind === 'todo') d.todos.push({ id: uid(), text, done: false, color: 'none' });
     else d.title = d.title ? `${d.title} · ${text}` : text;
     save(); closeAddSheet(); render();
@@ -1229,7 +1246,7 @@ function renderIdeas() {
   const index = el('section', { class: 'page', 'aria-label': 'Ideas index' },
     head({ num: 'ideas', stack: ['INDEX', `${visible.length} ${visible.length === 1 ? 'ENTRY' : 'ENTRIES'}`], actions: [archiveToggle(), phone.matches ? null : button('+ new idea', newIdea, { class: 'quiet' })] }));
   if (!visible.length) index.append(el('p', { class: 'empty-line' }, showArchived ? 'nothing archived.' : 'no ideas yet. the first one goes here.'));
-  visible.forEach((x, i) => index.append(indexRow({ id: x.id, folio: pad(i + 1), title: x.title || (x.notes || '').split('\n')[0] || 'untitled idea', meta: (x.status || 'captured').toUpperCase(),
+  visible.forEach((x, i) => index.append(indexRow({ id: x.id, folio: pad(i + 1), title: x.title || (x.notes || '').split(/[\n\f]/)[0] || 'untitled idea', meta: (x.status || 'captured').toUpperCase(),
     current: !onePage() && x === item, pen: 'rose', onclick: () => openEntry('ideas', x.id) })));
 
   const entry = el('section', { class: 'page', 'aria-label': 'Idea' });
@@ -1246,9 +1263,19 @@ function renderIdeas() {
     entry.append(head({ num: pad(Math.max(0, visible.indexOf(item)) + 1 || visible.length + 1), stack: [(item.status || 'captured').toUpperCase(), el('span', {}, 'CAPTURED ', dateInput(item.date, v => { item.date = v; persist(); }, 'Captured on'))],
       actions: [rows.includes(item) ? button(item.archived ? 'restore' : 'archive', () => { item.archived = !item.archived; detail = false; save(); render(); }, { class: 'quiet' }) : null] }),
     el('div', {}, field('title', 'entry-title', 'an idea'), field('detail', 'entry-detail', 'theme or project')),
-    choice(IDEA_STATUS.map(s => [s, s]), item.status || 'captured', v => { item.status = v; persist(); render(); }, { 'aria-label': 'Idea status' }),
-    el('div', { class: 'section fill' }, label('notes'), field('notes', 'ruled writing', 'write it out…', true)));
-  } else entry.append(head({ num: '', ghost: true }));
+    choice(IDEA_STATUS.map(s => [s, s]), item.status || 'captured', v => { item.status = v; persist(); render(); }, { 'aria-label': 'Idea status' }));
+    if (onePage() && !detail) { mountPages(index, entry, 'ideas'); return; }
+    // The notes are real pages: a long idea runs on past this one.
+    const slot = el('div', { class: 'ruled writing', 'data-placeholder': 'write it out…', 'aria-label': 'Idea notes' });
+    entry.append(el('div', { class: 'section fill' }, label('notes'), slot), el('footer', { class: 'page-foot mono turns' }));
+    book.dataset.cover = 'ideas';
+    book.className = onePage() ? 'book single' : 'book spread';
+    flowing = flowBook({ key: `idea:${item.id}`, before: onePage() ? [] : [index], text: item.notes || '',
+      commit: v => { item.notes = v; persist(); },
+      page: i => i ? flowLeaf((item.title || 'an idea').toUpperCase()) : { leaf: entry, slot } });
+    return;
+  }
+  entry.append(head({ num: '', ghost: true }));
   mountPages(index, entry, 'ideas');
 }
 function newIdea() {
@@ -1322,11 +1349,16 @@ function renderJournal() {
     button('‹ previous', () => go(-1), { class: 'quiet', disabled: !siblings[index - 1] }),
     button('next ›', () => go(1), { class: 'quiet', disabled: !siblings[index + 1] }),
     button(item.archived ? 'restore' : 'archive', () => { item.archived = !item.archived; showArchived = !item.archived; journalId = null; surface = 'reading'; save(); render(); }, { class: 'quiet' })] }),
-  section('finalThoughts', 'final thoughts', 144, false),
-  el('div', { class: 'section rule fill' }, label('notes'), editable('div', 'ruled writing', item.notes, '', v => { item.notes = v; save(); }, { multiline: true, label: 'Notes' })));
+  section('finalThoughts', 'final thoughts', 144, false));
+  // The notes are real pages: a long journal runs on past this spread.
+  const slot = el('div', { class: 'ruled writing', 'aria-label': 'Notes' });
+  right.append(el('div', { class: 'section rule fill' }, label('notes'), slot), el('footer', { class: 'page-foot mono turns' }));
+  if (onePage()) left.append(el('footer', { class: 'page-foot mono turns' }));
   book.dataset.cover = 'reading';
-  book.className = onePage() ? 'book single stacked' : 'book spread';
-  book.append(left, right);
+  book.className = onePage() ? 'book single' : 'book spread';
+  flowing = flowBook({ key: `book:${item.id}`, before: [left], text: item.notes || '',
+    commit: v => { item.notes = v; save(); },
+    page: i => i ? flowLeaf((item.title || 'a book').toUpperCase()) : { leaf: right, slot } });
 }
 
 /* ---------- gratitude: the year in pixels and today ---------- */
@@ -1510,10 +1542,214 @@ function morningPage(key, i) {
   page.append(text, foot);
   return page;
 }
+/* ---------- flowing pages: fixed leaves that writing runs across ---------- */
+// Morning pages, idea notes and book journals are real pages: they don't scroll.
+// When one is full the words carry on at the top of the next, and an empty page
+// pulls them back. ‹ › turn the leaves; + page starts a fresh one.
+const Flow = window.DayblockPageFlow;
+const leafAt = new Map();   // the leaf each flowing book is open to
+let flowing = null;         // the flowing book on the desk now
+// A trailing line break only shows with one more after it.
+const domText = s => s.endsWith('\n') ? s + '\n' : s;
+const slotText = node => node.innerText.replace(/\n$/, '');
+function caretIn(node) {
+  const sel = getSelection();
+  if (!sel.rangeCount || !node.contains(sel.anchorNode)) return null;
+  const r = document.createRange();
+  r.selectNodeContents(node); r.setEnd(sel.anchorNode, sel.anchorOffset);
+  return r.toString().length;
+}
+function placeCaret(node, n) {
+  node.focus({ preventScroll: true });
+  const t = node.firstChild, r = document.createRange();
+  if (t?.nodeType === 3) r.setStart(t, Math.min(n, t.length)); else r.setStart(node, 0);
+  r.collapse(true);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
+// A plain leaf that continues the writing: a small running head, the lines, a foot.
+function flowLeaf(running, cls = 'ruled writing') {
+  const slot = el('div', { class: `${cls} flow`, 'aria-label': `${running}, continued` });
+  const foot = el('footer', { class: 'page-foot mono turns' });
+  return { leaf: el('section', { class: 'page flow-leaf' }, el('header', { class: 'head running mono' }, running), slot, foot), slot, foot };
+}
+// before: leaves that stay put ahead of the writing (an index, a facts page).
+// page(i) → { leaf, slot, foot?, decorate?(i, n) } builds writing page i.
+// Leaves with a footer.turns get ‹ back, more › and + page in it.
+function flowBook({ key, before = [], text, commit, page, min = 1 }) {
+  const per = onePage() ? 1 : 2;
+  const built = [];
+  let pages = [], at = leafAt.get(key) ?? 0, composing = false;
+  const mirror = el('div', { 'aria-hidden': 'true' });
+  book.classList.add('flowing');
+  book.append(...before, mirror);
+  const slotOf = i => {
+    if (built[i]) return built[i];
+    const b = built[i] = page(i);
+    b.leaf.classList.add('flow-leaf', 'off');
+    bind(b.slot);
+    mirror.before(b.leaf);
+    return b;
+  };
+  const indexOf = slot => built.findIndex(b => b.slot === slot);
+  const fits = (i, s) => {
+    const { slot } = slotOf(i);
+    // Phones enlarge editable text, so the mirror copies the slot's own type.
+    const type = getComputedStyle(slot);
+    mirror.className = `${slot.className} flow-mirror`;
+    mirror.style.cssText = `width:${slot.clientWidth}px;font:${type.font};letter-spacing:${type.letterSpacing}`;
+    mirror.textContent = domText(s);
+    return mirror.scrollHeight <= slot.clientHeight + 1;
+  };
+  const leaves = () => [...before, ...built.slice(0, pages.length).map(b => b.leaf)];
+  function layout(from = 0) {
+    pages = Flow.paginate(text, fits, { min, keep: pages.slice(0, Math.max(0, from)) });
+    built.splice(pages.length).forEach(b => b.leaf.remove());
+    pages.forEach((p, i) => {
+      const { slot } = slotOf(i);
+      if (slot.textContent !== domText(p.text)) slot.textContent = domText(p.text);
+    });
+    mirror.textContent = '';
+    show();
+  }
+  function show() {
+    const all = leaves();
+    at = Math.max(0, Math.min(Math.floor(at / per) * per, Math.ceil(all.length / per) * per - per));
+    leafAt.set(key, at);
+    all.forEach((leaf, i) => leaf.classList.toggle('off', i < at || i >= at + per));
+    const n = pages.length;
+    built.slice(0, n).forEach((b, i) => b.decorate?.(i, n));
+    // Feet marked .turns carry the page turns: back on the first leaf showing,
+    // more on the last, and + page at the very end.
+    all.forEach((leaf, li) => {
+      const foot = leaf.querySelector(':scope > footer.turns');
+      if (!foot) return;
+      const i = li - before.length, first = li === at, last = li === Math.min(at + per, all.length) - 1;
+      foot.replaceChildren(
+        el('span', {}, first && at > 0 ? button('‹ back', () => turn(-1), { class: 'quiet' }) : null),
+        el('span', {}, i >= 0 && n > 1 ? `PAGE ${i + 1} OF ${n}` : ''),
+        el('span', { class: 'turn-next' }, last && li < all.length - 1 ? button('more ›', () => turn(1), { class: 'quiet' }) : null,
+          li === all.length - 1 ? button('+ page', addPage, { class: 'quiet' }) : null));
+    });
+  }
+  function turn(direction) {
+    const next = at + direction * per;
+    if (next < 0 || next >= leaves().length) return false;
+    at = next; show(); sfx('page');
+    return true;
+  }
+  function place(offset) {
+    const { i, local } = Flow.locate(pages, offset);
+    const li = before.length + i;
+    if (li < at || li >= at + per) { at = li; show(); sfx('page'); }
+    placeCaret(slotOf(i).slot, local);
+  }
+  function change(next, caret) {
+    text = next; commit(text);
+    layout(); place(caret);
+  }
+  function addPage() {
+    change(text + '\f', text.length + 1);
+  }
+  function bind(slot) {
+    slot.classList.add('flow');
+    slot.contentEditable = 'plaintext-only';
+    if (slot.contentEditable !== 'plaintext-only') slot.contentEditable = 'true';
+    slot.setAttribute('role', 'textbox'); slot.setAttribute('aria-multiline', 'true');
+    const reflow = () => {
+      const i = indexOf(slot);
+      pages[i] = { ...pages[i], text: slotText(slot) };
+      const caret = Flow.offsetOf(pages, i, Math.min(caretIn(slot) ?? 0, pages[i].text.length));
+      text = Flow.join(pages); commit(text);
+      layout(i - 1);
+      const now = Flow.locate(pages, caret);
+      if (now.i !== i || caretIn(slot) !== now.local) place(caret);
+    };
+    slot.addEventListener('input', e => { if (!composing && !e.isComposing) reflow(); });
+    slot.addEventListener('compositionstart', () => { composing = true; });
+    slot.addEventListener('compositionend', () => { composing = false; reflow(); });
+    slot.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); slot.blur(); return; }
+      const i = indexOf(slot);
+      const sel = getSelection();
+      // Backspace at the top of a page reaches back onto the one before it.
+      if (e.key === 'Backspace' && i > 0 && sel.isCollapsed && caretIn(slot) === 0) {
+        e.preventDefault();
+        const g = Flow.offsetOf(pages, i, 0);
+        change(text.slice(0, g - 1) + text.slice(g), g - 1);
+      }
+    });
+    // An empty page after unfinished writing sends the pen back to where it stopped.
+    slot.addEventListener('focus', () => {
+      const i = indexOf(slot);
+      if (i > 0 && !pages[i]?.text && pages[i - 1].seg === pages[i].seg) {
+        let end = i - 1;
+        while (end > 0 && !pages[end].text && pages[end - 1].seg === pages[i].seg) end--;
+        queueMicrotask(() => place(Flow.offsetOf(pages, end, pages[end].text.length)));
+      }
+    });
+  }
+  // Lay out once the book has its size, before anything is drawn.
+  slotOf(0);
+  queueMicrotask(() => { if (mirror.isConnected) layout(); });
+  return { turn, addPage };
+}
+
+/* ---------- morning pages: as many pages as the writing takes ---------- */
+// Old empty mornings are skipped when turning back; the last week always shows.
+const morningWritten = k => words((state.morningPages[k]?.pages || []).join(' ')) > 0;
+function nextMorning(key, direction) {
+  const recent = addDays(todayKey(), -7);
+  if (direction > 0) {
+    let k = addDays(key, 1);
+    while (k < recent && !morningWritten(k)) k = addDays(k, 1);
+    return k;
+  }
+  const prev = addDays(key, -1);
+  if (prev >= recent) return prev;
+  return Object.keys(state.morningPages).filter(k => k < key && morningWritten(k)).sort().pop() || null;
+}
 function renderMorning() {
+  const key = bookDay, date = fromKey(key);
   book.dataset.cover = 'morning';
-  book.className = onePage() ? 'book single stacked' : 'book spread';
-  book.append(morningPage(bookDay, 0), morningPage(bookDay, 1));
+  book.className = onePage() ? 'book single' : 'book spread';
+  const segs = [...(state.morningPages[key]?.pages || [''])];
+  while (segs.length > 1 && !segs[segs.length - 1]) segs.pop();
+  const stats = () => {
+    const mp = state.morningPages[key] || {};
+    const total = words((mp.pages || []).join(' '));
+    const minutes = mp.startedAt && mp.lastAt ? Math.max(1, Math.round((new Date(mp.lastAt) - new Date(mp.startedAt)) / 60000)) : 0;
+    return { mp, total, minutes };
+  };
+  flowing = flowBook({
+    key: `morning:${key}`, text: segs.join('\f'), min: onePage() ? 1 : 2,
+    commit: text => {
+      const mp = morningDay(key), now = new Date().toISOString();
+      mp.pages = text.split('\f');
+      mp.startedAt ||= now; mp.lastAt = now;
+      save();
+      const bar = document.querySelector('[data-words]');
+      if (bar) bar.textContent = `${stats().total} words`;
+    },
+    page: i => {
+      const slot = el('div', { class: 'ruled morning-text', 'data-placeholder': i ? '' : 'just start writing.', 'aria-label': `Morning pages, page ${i + 1}` });
+      const of = el('span', { class: 'mono ink-2' });
+      const more = button('+ page', () => flowing.addPage(), { class: 'quiet' });
+      const foot = el('footer', { class: 'page-foot mono' });
+      const h = head({ num: el('h1', { class: `num${key === todayKey() ? ' today' : ''}`, style: i ? 'visibility:hidden' : '' }, String(date.getDate())),
+        stack: [DOW[date.getDay()], monthYear(key)], actions: [more, of] });
+      if (i) h.querySelector('.stack').style.visibility = 'hidden';
+      return {
+        leaf: el('section', { class: 'page', 'aria-label': `Morning pages, page ${i + 1}` }, h, slot, foot), slot, foot,
+        decorate(i, n) {
+          const { mp, total, minutes } = stats();
+          of.textContent = `PAGE ${i + 1} OF ${n}`;
+          more.style.display = i === n - 1 ? '' : 'none';
+          foot.replaceChildren(el('span', {}, i === 0 && mp.startedAt ? fmtClock(new Date(mp.startedAt)) : ''),
+            el('span', {}, i === n - 1 && total ? `${total} WORDS${minutes ? ` · ${minutes} MIN` : ''}` : ''));
+        },
+      };
+    },
+  });
 }
 
 /* ---------- day book: a binder of today's pages from the real books ---------- */
@@ -1591,7 +1827,7 @@ function openBook(kind) {
   detail = false; journalId = null; showArchived = false; yearView = false;
   if (kind === 'planner') { unfoldNext = !onePage() && state.settings.mode === 'day'; surface = 'planner'; }
   else { surface = kind; if (['gratitude', 'morning', 'daybook'].includes(kind)) bookDay = todayKey(); }
-  render();
+  sfx('open'); render();
 }
 function renderShelf() {
   shelfEl.replaceChildren();
@@ -1701,7 +1937,7 @@ function renderStack() {
     const actions = [move];
     if (filed) actions.push(button('restore', () => restoreNote(note)));
     else {
-      actions.push(button(note.done ? 'reopen' : 'done', () => { note.done = !note.done; save(); renderStack(); }));
+      actions.push(button(note.done ? 'reopen' : 'done', () => { note.done = !note.done; sfx(note.done ? 'tick' : 'untick'); save(); renderStack(); }));
       if (canSort()) actions.push(button('sort', () => sortNote(note)));
     }
     actions.push(button('delete', () => deleteQuickNote(note), { 'aria-label': filed ? 'Delete sticky; keep its notebook entry' : 'Delete sticky' }));
@@ -1728,6 +1964,7 @@ const quickEl = $('#quickNote'), quickText = $('#quickText'), quickPut = $('#qui
 function openQuickNote() {
   closePopover();
   quickEl.hidden = false;
+  sfx('rustle');
   quickText.value = state.quickDraft || '';
   quickPut.classList.toggle('ready', !!quickText.value.trim());
   quickText.focus();
@@ -1749,7 +1986,7 @@ function putAway() {
   const note = { id: uid(), original: text, dest: 'catchall', section: 'unsorted', date: '', time: null, stored: text, note: '', at: new Date().toISOString(), done: false, ref: null };
   state.quickNotes.push(note);
   state.quickDraft = ''; quickText.value = '';
-  closeQuickNote(); save();
+  closeQuickNote(); save(); sfx('whoosh');
   toast('put on the stack');
   if (canSort()) sortNote(note);
   else if (surface === 'shelf') render();
@@ -1873,7 +2110,8 @@ function mainSheet(s) {
         el('span', { class: 'pad-sep' }, '–'),
         step('‹', 'workEnd', -1, 'End earlier'), el('span', { class: 'pad-hour' }, fmtHour(s.workEnd)), step('›', 'workEnd', 1, 'End later')),
       padRow('weeks start', padChoices('Week starts on', [['mon', 'mon'], ['sat', 'sat'], ['sun', 'sun']], s.weekStart, v => { s.weekStart = v; })),
-      padRow('paper', padChoices('Writing paper', [['lines', 'lined'], ['dots', 'dots'], ['blank', 'blank']].map(([v, t]) => [v, t, paper(v)]), s.ruling, v => { s.ruling = v; }))),
+      padRow('paper', padChoices('Writing paper', [['lines', 'lined'], ['dots', 'dots'], ['blank', 'blank']].map(([v, t]) => [v, t, paper(v)]), s.ruling, v => { s.ruling = v; })),
+      padRow('sounds', padChoices('Sounds', [['on', 'on'], ['off', 'off']], s.sounds === false ? 'off' : 'on', v => { s.sounds = v === 'on'; if (s.sounds) sfx('tick'); }))),
     shelfPicker(),
     padRow('quick notes sort', padLink(quickSummary(), turnTo('ai'), { 'data-k': 'to-ai' })),
     accountLine(padLink('your data ›', turnTo('data'), { class: 'quiet', 'data-k': 'to-data' })),
@@ -1954,7 +2192,7 @@ function closeSettings(instant = false) {
   setTimeout(() => { if (!settingsOpen) { settingsLayer.hidden = true; settingsLayer.classList.remove('closing'); } }, 320);
   render();
 }
-const toggleSettings = () => (settingsOpen ? closeSettings() : openSettings());
+const toggleSettings = () => { sfx('rustle'); settingsOpen ? closeSettings() : openSettings(); };
 settingsLayer.addEventListener('pointerdown', e => { if (e.target === settingsLayer) closeSettings(); });
 // The shelf as two columns of spines, named; tap one to put it away or bring it back.
 function shelfPicker() {
@@ -2148,7 +2386,7 @@ function renderBar() {
   const quick = () => b('quick note', openQuickNote, { class: 'quick-pill' });
   // Only the books that use hours carry settings; everything else lives on the shelf.
   const settings = () => phone.matches || !['shelf', 'planner', 'daybook'].includes(surface) ? null : b('settings', toggleSettings, { class: 'settings-btn', 'aria-expanded': String(settingsOpen) });
-  const shelfBtn = () => b('shelf', () => { surface = 'shelf'; closeAddSheet(); render(); }, { class: 'first' });
+  const shelfBtn = () => b('shelf', () => { surface = 'shelf'; closeAddSheet(); sfx('close'); render(); }, { class: 'first' });
   const dbAt = daybookChunks.findIndex(c => c.includes(daybookAt));
   const flipping = surface === 'daybook';
   const dates = () => [b('‹', () => navigate(-1), { class: 'arrow', 'aria-label': flipping ? 'Previous page' : 'Previous', title: flipping ? 'previous page (←)' : 'previous (←)', disabled: flipping && dbAt <= 0 }), b('today', goToday, { class: 'strong' }),
@@ -2232,7 +2470,7 @@ function render() {
   toggle.title = prefs().margin && !margin ? 'the desk is tucked away to keep the book full size. it comes back when there is room.' : 'your stickies and week card beside the book';
 
   book.replaceChildren();
-  morningFeet = [];
+  morningFeet = []; flowing = null;
   book.removeAttribute('data-cover');
   switch (surface) {
     case 'planner':
