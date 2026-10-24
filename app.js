@@ -2044,17 +2044,19 @@ function dragSticker(e, { art, from = null, origin }) {
 function openStickers() {
   closePopover(); closeQuickNote();
   stickerEl_.replaceChildren(
-    el('header', { class: 'sheet-head' }, el('span', { class: 'mono' }, 'sticker sheet'), button('close', closeStickers, { class: 'quiet' })),
     el('div', { class: 'sheet-grid' }, el('span', { class: 'sheet-pack', 'aria-hidden': 'true' }, 'kyra’s critters'), STICKERS.map(([art, name]) => {
       const cell = el('button', { type: 'button', class: 'sheet-sticker', 'aria-label': `${name}: drag onto a page` }, el('img', { src: stickerSrc(art), alt: '', draggable: 'false' }));
       cell.addEventListener('pointerdown', e => dragSticker(e, { art, origin: cell }));
       return cell;
-    })),
-    el('p', { class: 'sheet-hint' }, 'peel one off and press it onto a page. drag it off the book to take it back off.'));
+    })));
   stickerEl_.hidden = false;
   sfx('rustle');
 }
 function closeStickers() { stickerEl_.hidden = true; }
+// A tap anywhere off the sheet puts it away.
+document.addEventListener('pointerdown', e => {
+  if (!stickerEl_.hidden && !stickerEl_.contains(e.target) && !e.target.closest?.('.sticker-pill, .sticker')) closeStickers();
+});
 const toggleStickers = () => (stickerEl_.hidden ? openStickers() : closeStickers());
 
 /* ---------- quick note: a clear sticky from the bottom bar ---------- */
